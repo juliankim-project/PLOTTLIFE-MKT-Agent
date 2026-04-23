@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>plott LIFE 블로그 프리뷰</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', sans-serif; }
+</style>
+</head>
+<body class="min-h-screen bg-[#f5f0e5]/40 p-6">
+
+<div class="max-w-4xl mx-auto">
+  <header class="mb-8 text-center">
+    <div class="inline-flex items-center gap-2 mb-3">
+      <div class="flex h-10 w-10 items-center justify-center rounded-full bg-[#74594B]">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21V9l9-7 9 7v12h-6v-8h-6v8z"/></svg>
+      </div>
+      <span class="text-xl font-bold">plott <span class="font-medium text-[#74594B]">LIFE</span></span>
+    </div>
+    <h1 class="text-3xl font-bold tracking-tight">블로그 구조 프리뷰</h1>
+    <p class="mt-2 text-gray-600">게스트 전용 · 여정 기반 2 탭 구조 + 3 파일럿</p>
+  </header>
+
+  <!-- Design Kit -->
+  <section class="mb-6">
+    <a href="./kit.html" class="group block rounded-xl border-2 border-dashed border-[#74594B] bg-white p-5 hover:bg-[#f5f0e5]/30">
+      <div class="flex items-center gap-3">
+        <div class="w-12 h-12 rounded-lg bg-gradient-to-br from-[#f5f0e5] to-[#e7ded1] flex items-center justify-center text-2xl">🎨</div>
+        <div class="flex-1">
+          <div class="flex items-center gap-2">
+            <span class="rounded-full bg-[#74594B] text-white px-2 py-0.5 text-[10px] font-bold">KIT</span>
+            <p class="text-[11px] text-gray-500">디자인 시스템</p>
+          </div>
+          <h2 class="mt-1 text-lg font-bold group-hover:text-[#74594B]">컴포넌트 킷 · shared.css</h2>
+          <p class="text-xs text-gray-600 mt-0.5">토큰·타이포·버튼·박스·카드·챕터·퀵가이드 · 여기서 조정하면 전체 페이지에 반영</p>
+        </div>
+      </div>
+    </a>
+  </section>
+
+  <!-- Navigation pages -->
+  <section class="mb-8">
+    <p class="text-[11px] font-semibold uppercase tracking-wider text-[#74594B] mb-3">📍 탐색</p>
+    <a href="./home.html" class="group block rounded-xl border-2 border-[#74594B] bg-white p-6 shadow-lg hover:shadow-xl transition-shadow">
+      <div class="flex items-start gap-4">
+        <div class="w-14 h-14 rounded-xl bg-[#74594B] flex items-center justify-center text-white text-2xl">🏠</div>
+        <div class="flex-1">
+          <div class="flex items-center gap-2 mb-1">
+            <span class="rounded-full bg-[#74594B] text-white px-2 py-0.5 text-[10px] font-bold">MAIN</span>
+            <span class="text-[11px] text-gray-500">홈 페이지</span>
+          </div>
+          <h2 class="text-xl font-bold group-hover:text-[#74594B]">블로그 홈</h2>
+          <p class="mt-1.5 text-sm text-gray-600">슬로건 "한국에서 살아보기" · 2 탭 구조 (방 찾기 / 살아보기)</p>
+          <div class="mt-3 flex flex-wrap gap-1">
+            <span class="rounded-full bg-[#f5f0e5] px-2 py-0.5 text-[10px] text-[#74594B]">Hero + 검색</span>
+            <span class="rounded-full bg-[#f5f0e5] px-2 py-0.5 text-[10px] text-[#74594B]">🔍 방 찾기 그룹</span>
+            <span class="rounded-full bg-[#f5f0e5] px-2 py-0.5 text-[10px] text-[#74594B]">🌱 살아보기 그룹</span>
+            <span class="rounded-full bg-[#f5f0e5] px-2 py-0.5 text-[10px] text-[#74594B]">💰 시세 대시보드</span>
+            <span class="rounded-full bg-[#f5f0e5] px-2 py-0.5 text-[10px] text-[#74594B]">6축 태그 필터</span>
+          </div>
+        </div>
+      </div>
+    </a>
+  </section>
+
+  <!-- 3 Pilots -->
+  <section class="mb-8">
+    <p class="text-[11px] font-semibold uppercase tracking-wider text-[#74594B] mb-3">📄 3개 파일럿 상세 페이지</p>
+    <div class="grid md:grid-cols-3 gap-4">
+
+      <a href="./A-seongsu.html" class="group block rounded-xl border border-gray-200 bg-white p-5 shadow-sm hover:shadow-lg transition-shadow">
+        <div class="w-12 h-12 rounded-lg bg-gradient-to-br from-[#c8a489] to-[#74594B] flex items-center justify-center text-white text-xl mb-3">🗺</div>
+        <div class="flex items-center gap-1.5 mb-1">
+          <span class="rounded-full bg-[#74594B] text-white px-2 py-0.5 text-[9px] font-bold">A</span>
+          <span class="rounded-full bg-[#f5f0e5] text-[#74594B] px-2 py-0.5 text-[10px] font-medium">🔍 방 찾기</span>
+          <span class="text-[10px] text-gray-500">지역 허브</span>
+        </div>
+        <h3 class="font-bold group-hover:text-[#74594B] leading-snug">성수동 단기임대 완벽 가이드</h3>
+        <p class="mt-1.5 text-xs text-gray-600">9-섹션 포맷 · 노마드·크리에이터 타겟 · 시세·매물·생활</p>
+        <div class="mt-3 text-[10px] text-gray-500 space-y-0.5">
+          <p>📐 9 섹션</p>
+          <p>🎯 전환 + 트래픽</p>
+          <p>♻️ 복제성 ⭐⭐⭐⭐⭐</p>
+        </div>
+      </a>
+
+      <a href="./B-snu.html" class="group block rounded-xl border border-gray-200 bg-white p-5 shadow-sm hover:shadow-lg transition-shadow">
+        <div class="w-12 h-12 rounded-lg bg-gradient-to-br from-[#a78670] to-[#3d2b1f] flex items-center justify-center text-white text-xl mb-3">🎓</div>
+        <div class="flex items-center gap-1.5 mb-1">
+          <span class="rounded-full bg-[#74594B] text-white px-2 py-0.5 text-[9px] font-bold">B</span>
+          <span class="rounded-full bg-[#f5f0e5] text-[#74594B] px-2 py-0.5 text-[10px] font-medium">🔍 방 찾기</span>
+          <span class="text-[10px] text-gray-500">학교 허브</span>
+        </div>
+        <h3 class="font-bold group-hover:text-[#74594B] leading-snug">서울대 유학생 주거 완벽 가이드</h3>
+        <p class="mt-1.5 text-xs text-gray-600">8-섹션 포맷 · 교환학생·어학당 타겟 · 시세·기숙사 비교</p>
+        <div class="mt-3 text-[10px] text-gray-500 space-y-0.5">
+          <p>📐 8 섹션</p>
+          <p>🎯 전환 + 트래픽</p>
+          <p>♻️ 복제성 ⭐⭐⭐⭐</p>
+        </div>
+      </a>
+
+      <a href="./C-arc.html" class="group block rounded-xl border border-gray-200 bg-white p-5 shadow-sm hover:shadow-lg transition-shadow">
+        <div class="w-12 h-12 rounded-lg bg-gradient-to-br from-[#8d6f5a] to-[#3d2b1f] flex items-center justify-center text-white text-xl mb-3">🪪</div>
+        <div class="flex items-center gap-1.5 mb-1">
+          <span class="rounded-full bg-[#74594B] text-white px-2 py-0.5 text-[9px] font-bold">C</span>
+          <span class="rounded-full bg-[#f5f0e5] text-[#74594B] px-2 py-0.5 text-[10px] font-medium">🌱 살아보기</span>
+          <span class="text-[10px] text-gray-500">절차형</span>
+        </div>
+        <h3 class="font-bold group-hover:text-[#74594B] leading-snug">ARC 3주 완성 가이드</h3>
+        <p class="mt-1.5 text-xs text-gray-600">절차형 가이드 · 외국인 100% · 엔코 약점 공략</p>
+        <div class="mt-3 text-[10px] text-gray-500 space-y-0.5">
+          <p>📐 9 섹션 + FAQ</p>
+          <p>🎯 트래픽 SEO 킬러</p>
+          <p>♻️ 고유 주제</p>
+        </div>
+      </a>
+
+    </div>
+  </section>
+
+  <!-- Structure info -->
+  <section class="rounded-xl border border-[#e7ded1] bg-white p-5 mb-8">
+    <p class="text-[11px] font-semibold uppercase tracking-wider text-[#74594B] mb-3">🏗 확정 구조</p>
+    <div class="grid md:grid-cols-2 gap-4 text-sm">
+      <div>
+        <p class="font-semibold mb-1">🔍 방 찾기 (Before · 전환 전)</p>
+        <ul class="text-[12px] text-gray-600 space-y-0.5 list-disc list-inside">
+          <li>🗺 지역으로 / 🎓 학교로 / 🎯 목적으로</li>
+          <li>💰 시세·예산 / 📄 계약·결제 / 🛂 비자·입국</li>
+        </ul>
+      </div>
+      <div>
+        <p class="font-semibold mb-1">🌱 살아보기 (After · 전환 후)</p>
+        <ul class="text-[12px] text-gray-600 space-y-0.5 list-disc list-inside">
+          <li>🪪 ARC·서류 / 💳 생활 세팅 / 🛋 일상 노하우</li>
+          <li>🏥 의료·건강 / 🍜 한국 문화 / 🗾 주말·여행 / 📖 리얼 후기</li>
+        </ul>
+      </div>
+    </div>
+    <hr class="my-3 border-gray-100">
+    <p class="text-[12px] text-gray-500"><b>슬로건:</b> 한국에서 살아보기 · <b>태그 6축:</b> 지역·대학·목적·조건·문화·타겟</p>
+  </section>
+
+  <!-- Next steps -->
+  <section class="rounded-xl border border-gray-200 bg-white p-5">
+    <p class="text-[11px] font-semibold uppercase tracking-wider text-[#74594B] mb-2">🚀 다음 단계</p>
+    <ol class="text-sm text-gray-700 space-y-2 list-decimal list-inside">
+      <li>구조 피드백 확정 (OK? 수정 포인트?)</li>
+      <li>Next.js 라우트로 포팅 — 인터랙션·상태·동적 콘텐츠 추가</li>
+      <li>apps/web 으로 이식 — 실제 서비스에 배포</li>
+      <li>파일럿 A·B·C 실제 콘텐츠 채움 → 발행 → GA4 측정</li>
+    </ol>
+    <p class="mt-3 text-[11px] text-gray-400">📁 파일 위치: <code class="rounded bg-gray-100 px-1.5 py-0.5">public/preview/</code></p>
+  </section>
+</div>
+
+</body>
+</html>

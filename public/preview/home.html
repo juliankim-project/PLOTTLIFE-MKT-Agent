@@ -1,0 +1,750 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>plott LIFE 블로그 — 한국에서 살아보기</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = { theme: { extend: {
+    colors: { plott: { 50: "#faf8f5", 100: "#f5f0e5", 200: "#e7ded1", 500: "#74594B", 700: "#3d2b1f" }},
+    boxShadow: { card: "0 5px 20px 0 rgba(0,0,0,0.08)", soft: "0 3px 10px 0 rgba(0,0,0,0.05)" }
+  }}}
+</script>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', sans-serif; }
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { scrollbar-width: none; }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+</style>
+</head>
+<body class="bg-white text-gray-900 antialiased">
+
+<!-- Preview bar -->
+<div class="sticky top-0 z-50 flex items-center justify-between bg-amber-50 border-b border-amber-200 px-4 py-1.5 text-xs">
+  <div class="flex items-center gap-2 text-amber-900">
+    <span class="inline-flex items-center rounded-full bg-amber-200 px-2 py-0.5 font-semibold">🔍 프리뷰</span>
+    <span>블로그 홈 · STAY GUIDE / LIVING / LOCAL 3탭</span>
+  </div>
+  <div class="flex gap-2">
+    <a href="./index.html" class="underline">목록</a>
+  </div>
+</div>
+
+<!-- Header -->
+<header class="sticky top-7 z-40 border-b border-gray-100 bg-white/95 backdrop-blur">
+  <div class="mx-auto flex h-14 max-w-[min(100%-2rem,1120px)] items-center justify-between">
+    <a href="#" class="flex items-center gap-2">
+      <div class="flex h-8 w-8 items-center justify-center rounded-full bg-plott-500">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21V9l9-7 9 7v12h-6v-8h-6v8z"/></svg>
+      </div>
+      <span class="text-[17px] font-bold tracking-tight">plott <span class="font-medium text-plott-500">LIFE</span></span>
+    </a>
+    <nav class="hidden md:flex items-center gap-6 text-sm text-gray-700">
+      <a class="hover:text-plott-500" href="#">방 찾기</a>
+      <a class="font-semibold text-plott-500" href="#">블로그</a>
+      <a class="hover:text-plott-500" href="#">FAQ</a>
+      <a class="hover:text-plott-500" href="#">호스트 되기</a>
+    </nav>
+    <a href="#" class="inline-flex h-9 items-center rounded-md bg-plott-500 px-3.5 text-sm font-medium text-white hover:bg-plott-700">방 둘러보기</a>
+  </div>
+</header>
+
+<!-- Hero -->
+<section class="bg-plott-100/40 border-b border-gray-100">
+  <div class="mx-auto max-w-[min(100%-2rem,1120px)] py-10 sm:py-14">
+    <p class="text-[11px] font-semibold uppercase tracking-[0.2em] text-plott-500 mb-2">plott LIFE MAGAZINE</p>
+    <h1 class="text-[36px] sm:text-[48px] font-bold tracking-tight leading-[1.1]">한국에서 살아보기</h1>
+    <p class="mt-3 text-gray-600 max-w-xl text-[15px]">단기임대로 한국에 머무는 모든 순간. 숙소부터 생활·동네까지 한 권에.</p>
+    <div class="mt-6 flex items-center gap-2">
+      <div class="relative flex-1 max-w-md">
+        <svg class="absolute left-3 top-2.5 text-gray-400" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        <input type="search" placeholder='예: "강남 시세", "ARC 발급", "성수 카페"' class="w-full h-10 rounded-md border border-gray-300 bg-white pl-10 pr-3 text-sm focus:border-plott-500 focus:ring-2 focus:ring-plott-500/20 outline-none"/>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 🎯 BIG 3 TABS -->
+<section class="sticky top-[84px] z-30 border-b border-gray-200 bg-white">
+  <div class="mx-auto max-w-[min(100%-2rem,1120px)]">
+    <nav class="flex gap-0 overflow-x-auto no-scrollbar" role="tablist">
+      <button onclick="switchTab('stay')" id="tab-btn-stay" role="tab" aria-selected="true"
+        class="tab-btn group flex-1 min-w-[140px] flex items-center justify-center gap-3 border-b-[3px] border-plott-500 px-5 py-5 text-left whitespace-nowrap transition-colors">
+        <span class="text-2xl">🏠</span>
+        <div class="leading-tight">
+          <p class="text-[10px] font-semibold uppercase tracking-[0.15em] text-plott-500">PILLAR 01</p>
+          <p class="text-[15px] font-bold text-plott-500">STAY GUIDE</p>
+          <p class="text-[11px] text-gray-500 mt-0.5">숙소·매물·계약</p>
+        </div>
+      </button>
+      <button onclick="switchTab('living')" id="tab-btn-living" role="tab" aria-selected="false"
+        class="tab-btn group flex-1 min-w-[140px] flex items-center justify-center gap-3 border-b-[3px] border-transparent px-5 py-5 text-left whitespace-nowrap transition-colors hover:bg-plott-50/50">
+        <span class="text-2xl opacity-50">🌱</span>
+        <div class="leading-tight">
+          <p class="text-[10px] font-semibold uppercase tracking-[0.15em] text-gray-400">PILLAR 02</p>
+          <p class="text-[15px] font-bold text-gray-700">LIVING</p>
+          <p class="text-[11px] text-gray-500 mt-0.5">한국 생활 실용</p>
+        </div>
+      </button>
+      <button onclick="switchTab('local')" id="tab-btn-local" role="tab" aria-selected="false"
+        class="tab-btn group flex-1 min-w-[140px] flex items-center justify-center gap-3 border-b-[3px] border-transparent px-5 py-5 text-left whitespace-nowrap transition-colors hover:bg-plott-50/50">
+        <span class="text-2xl opacity-50">🗺</span>
+        <div class="leading-tight">
+          <p class="text-[10px] font-semibold uppercase tracking-[0.15em] text-gray-400">PILLAR 03</p>
+          <p class="text-[15px] font-bold text-gray-700">LOCAL</p>
+          <p class="text-[11px] text-gray-500 mt-0.5">동네·문화·경험</p>
+        </div>
+      </button>
+    </nav>
+  </div>
+</section>
+
+<!-- ═══════════════ PANEL: STAY GUIDE ═══════════════ -->
+<div id="panel-stay" class="tab-panel active">
+
+  <!-- Intro strip -->
+  <section class="bg-plott-100/30 py-6 border-b border-gray-100">
+    <div class="mx-auto max-w-[min(100%-2rem,1120px)] flex items-start gap-4">
+      <div class="h-12 w-12 shrink-0 rounded-xl bg-plott-500 flex items-center justify-center text-white text-2xl">🏠</div>
+      <div>
+        <p class="text-[11px] font-semibold uppercase tracking-[0.15em] text-plott-500">STAY GUIDE</p>
+        <h2 class="text-[20px] font-bold">숙소를 고르는 모든 기준</h2>
+        <p class="mt-1 text-[13px] text-gray-600">지역·학교·목적별 매물 추천과 시세·계약·비자 실전 정보</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Featured pick -->
+  <section class="py-10">
+    <div class="mx-auto max-w-[min(100%-2rem,1120px)]">
+      <p class="text-[11px] font-semibold uppercase tracking-[0.15em] text-plott-500 mb-4">EDITOR'S PICK</p>
+      <div class="grid lg:grid-cols-5 gap-5">
+        <a href="./B-snu.html" class="lg:col-span-3 group rounded-2xl overflow-hidden border border-gray-200 bg-white shadow-card hover:-translate-y-0.5 transition-transform">
+          <div class="aspect-[16/9] bg-plott-100">
+            <img src="https://placehold.co/900x500/74594b/fff?text=SNU+Housing+Guide" class="h-full w-full object-cover"/>
+          </div>
+          <div class="p-6">
+            <span class="rounded-[3px] bg-plott-100 text-plott-500 px-2 py-[3px] text-[11px] font-medium">🎓 학교로 찾기</span>
+            <h3 class="mt-3 text-2xl font-bold group-hover:text-plott-500 leading-snug">서울대 유학생 주거 완벽 가이드</h3>
+            <p class="mt-2 text-sm text-gray-600">관악구 시세부터 기숙사 vs 자취 비교까지 · 2026 신학기 필독</p>
+            <div class="mt-4 flex items-center gap-2 text-[11px] text-gray-500">
+              <span>9분 읽기</span><span>·</span><span>👁 4.2k</span>
+            </div>
+          </div>
+        </a>
+        <div class="lg:col-span-2 space-y-4">
+          <a href="./A-seongsu.html" class="group block rounded-2xl overflow-hidden border border-gray-200 bg-white shadow-soft">
+            <div class="flex">
+              <div class="w-32 shrink-0 aspect-square bg-plott-100"><img src="https://placehold.co/200x200/c8a489/fff?text=Seongsu" class="h-full w-full object-cover"/></div>
+              <div class="p-4 min-w-0">
+                <span class="rounded-[3px] bg-plott-100 px-1.5 py-0.5 text-[10px] text-plott-500">🗺 지역</span>
+                <h4 class="mt-1.5 font-semibold text-[15px] leading-snug group-hover:text-plott-500 line-clamp-2">성수동 단기임대 완벽 가이드</h4>
+                <p class="text-[11px] text-gray-500 mt-2">👁 2.9k</p>
+              </div>
+            </div>
+          </a>
+          <a href="#" class="group block rounded-2xl overflow-hidden border border-gray-200 bg-white shadow-soft">
+            <div class="flex">
+              <div class="w-32 shrink-0 aspect-square bg-plott-100"><img src="https://placehold.co/200x200/a78670/fff?text=Gangnam" class="h-full w-full object-cover"/></div>
+              <div class="p-4 min-w-0">
+                <span class="rounded-[3px] bg-plott-100 px-1.5 py-0.5 text-[10px] text-plott-500">🗺 지역</span>
+                <h4 class="mt-1.5 font-semibold text-[15px] leading-snug group-hover:text-plott-500 line-clamp-2">강남 출장자 숙소 베스트 8선</h4>
+                <p class="text-[11px] text-gray-500 mt-2">👁 1.7k</p>
+              </div>
+            </div>
+          </a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 지역 카드 -->
+  <section class="py-8 bg-plott-50/40 border-y border-gray-100">
+    <div class="mx-auto max-w-[min(100%-2rem,1120px)]">
+      <div class="flex items-end justify-between mb-5">
+        <div>
+          <p class="text-[11px] font-semibold uppercase tracking-[0.15em] text-plott-500 mb-0.5">BY REGION</p>
+          <h3 class="text-[20px] font-bold">지역으로 찾기</h3>
+        </div>
+        <a href="#" class="text-[12px] text-plott-500 hover:underline">전체 지역 →</a>
+      </div>
+      <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+        <a href="./A-seongsu.html" class="group rounded-xl overflow-hidden border border-gray-200 bg-white hover:shadow-card">
+          <div class="aspect-[4/3] bg-plott-100"><img src="https://placehold.co/300x225/c8a489/fff?text=Seongsu" class="h-full w-full object-cover"/></div>
+          <div class="p-3"><p class="font-semibold text-sm group-hover:text-plott-500">성수</p><p class="text-[10px] text-gray-500">💰 55~80만 · 노마드</p></div>
+        </a>
+        <a href="#" class="group rounded-xl overflow-hidden border border-gray-200 bg-white hover:shadow-card">
+          <div class="aspect-[4/3] bg-plott-100"><img src="https://placehold.co/300x225/8d6f5a/fff?text=Gangnam" class="h-full w-full object-cover"/></div>
+          <div class="p-3"><p class="font-semibold text-sm group-hover:text-plott-500">강남</p><p class="text-[10px] text-gray-500">💰 70~110만 · 출장</p></div>
+        </a>
+        <a href="#" class="group rounded-xl overflow-hidden border border-gray-200 bg-white hover:shadow-card">
+          <div class="aspect-[4/3] bg-plott-100"><img src="https://placehold.co/300x225/a78670/fff?text=Hongdae" class="h-full w-full object-cover"/></div>
+          <div class="p-3"><p class="font-semibold text-sm group-hover:text-plott-500">홍대</p><p class="text-[10px] text-gray-500">💰 50~75만 · 노마드</p></div>
+        </a>
+        <a href="#" class="group rounded-xl overflow-hidden border border-gray-200 bg-white hover:shadow-card">
+          <div class="aspect-[4/3] bg-plott-100"><img src="https://placehold.co/300x225/74594b/fff?text=Itaewon" class="h-full w-full object-cover"/></div>
+          <div class="p-3"><p class="font-semibold text-sm group-hover:text-plott-500">이태원</p><p class="text-[10px] text-gray-500">💰 65~100만 · 외국인</p></div>
+        </a>
+        <a href="#" class="group rounded-xl overflow-hidden border border-gray-200 bg-white hover:shadow-card">
+          <div class="aspect-[4/3] bg-plott-100"><img src="https://placehold.co/300x225/6b4f3e/fff?text=Busan" class="h-full w-full object-cover"/></div>
+          <div class="p-3"><p class="font-semibold text-sm group-hover:text-plott-500">부산</p><p class="text-[10px] text-gray-500">💰 40~65만 · 한달살기</p></div>
+        </a>
+        <a href="#" class="group rounded-xl overflow-hidden border border-gray-200 bg-white hover:shadow-card">
+          <div class="aspect-[4/3] bg-plott-100"><img src="https://placehold.co/300x225/b59580/fff?text=Jeju" class="h-full w-full object-cover"/></div>
+          <div class="p-3"><p class="font-semibold text-sm group-hover:text-plott-500">제주</p><p class="text-[10px] text-gray-500">💰 45~75만 · 워케이션</p></div>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- 시세 대시보드 -->
+  <section class="py-8">
+    <div class="mx-auto max-w-[min(100%-2rem,1120px)]">
+      <div class="rounded-2xl border border-plott-200 bg-white p-6 shadow-card">
+        <div class="flex items-start justify-between mb-4">
+          <div>
+            <p class="text-[11px] font-semibold uppercase tracking-[0.15em] text-plott-500 mb-0.5">LIVE PRICING</p>
+            <h3 class="text-[20px] font-bold">💰 요즘 시세 한눈에</h3>
+            <p class="text-[11px] text-gray-500 mt-0.5">2026.04 셋째 주 기준 · 매주 업데이트</p>
+          </div>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead class="bg-plott-100">
+              <tr>
+                <th class="px-3 py-2 text-left font-semibold text-plott-700 text-xs">지역</th>
+                <th class="px-3 py-2 text-right font-semibold text-plott-700 text-xs">원룸 월세</th>
+                <th class="px-3 py-2 text-right font-semibold text-plott-700 text-xs">주세</th>
+                <th class="px-3 py-2 text-right font-semibold text-plott-700 text-xs">보증금</th>
+                <th class="px-3 py-2 text-right font-semibold text-plott-700 text-xs">전주 대비</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100">
+              <tr><td class="px-3 py-2.5 font-medium">강남</td><td class="px-3 py-2.5 text-right">70~110만</td><td class="px-3 py-2.5 text-right">25~35만</td><td class="px-3 py-2.5 text-right">0~300만</td><td class="px-3 py-2.5 text-right text-red-600">▲ 2.1%</td></tr>
+              <tr><td class="px-3 py-2.5 font-medium">성수</td><td class="px-3 py-2.5 text-right">55~80만</td><td class="px-3 py-2.5 text-right">20~28만</td><td class="px-3 py-2.5 text-right">0~250만</td><td class="px-3 py-2.5 text-right text-red-600">▲ 3.4%</td></tr>
+              <tr><td class="px-3 py-2.5 font-medium">홍대</td><td class="px-3 py-2.5 text-right">50~75만</td><td class="px-3 py-2.5 text-right">18~25만</td><td class="px-3 py-2.5 text-right">0~200만</td><td class="px-3 py-2.5 text-right text-gray-500">±0</td></tr>
+              <tr><td class="px-3 py-2.5 font-medium">신촌·연대</td><td class="px-3 py-2.5 text-right">50~70만</td><td class="px-3 py-2.5 text-right">18~24만</td><td class="px-3 py-2.5 text-right">0~200만</td><td class="px-3 py-2.5 text-right text-green-600">▼ 1.2%</td></tr>
+              <tr><td class="px-3 py-2.5 font-medium">서울대 근처</td><td class="px-3 py-2.5 text-right">40~65만</td><td class="px-3 py-2.5 text-right">15~22만</td><td class="px-3 py-2.5 text-right">0~150만</td><td class="px-3 py-2.5 text-right text-gray-500">±0</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 대학 -->
+  <section class="py-8 bg-plott-50/40 border-y border-gray-100">
+    <div class="mx-auto max-w-[min(100%-2rem,1120px)]">
+      <div class="flex items-end justify-between mb-5">
+        <div>
+          <p class="text-[11px] font-semibold uppercase tracking-[0.15em] text-plott-500 mb-0.5">BY UNIVERSITY</p>
+          <h3 class="text-[20px] font-bold">학교로 찾기</h3>
+        </div>
+        <a href="#" class="text-[12px] text-plott-500 hover:underline">전체 대학 →</a>
+      </div>
+      <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+        <a href="./B-snu.html" class="group rounded-xl border-2 border-plott-500 bg-white p-5 text-center hover:shadow-card">
+          <div class="mx-auto w-12 h-12 rounded-full bg-plott-500 text-white flex items-center justify-center text-xl">🏛</div>
+          <p class="mt-2 font-semibold text-sm">서울대</p>
+          <p class="text-[10px] text-plott-500 font-medium mt-0.5">40~65만</p>
+        </a>
+        <a href="#" class="group rounded-xl border border-gray-200 bg-white p-5 text-center hover:shadow-card hover:border-plott-500">
+          <div class="mx-auto w-12 h-12 rounded-full bg-plott-100 flex items-center justify-center text-xl">🦅</div>
+          <p class="mt-2 font-semibold text-sm">연세대</p>
+          <p class="text-[10px] text-plott-500 font-medium mt-0.5">50~70만</p>
+        </a>
+        <a href="#" class="group rounded-xl border border-gray-200 bg-white p-5 text-center hover:shadow-card hover:border-plott-500">
+          <div class="mx-auto w-12 h-12 rounded-full bg-plott-100 flex items-center justify-center text-xl">🐯</div>
+          <p class="mt-2 font-semibold text-sm">고려대</p>
+          <p class="text-[10px] text-plott-500 font-medium mt-0.5">45~68만</p>
+        </a>
+        <a href="#" class="group rounded-xl border border-gray-200 bg-white p-5 text-center hover:shadow-card hover:border-plott-500">
+          <div class="mx-auto w-12 h-12 rounded-full bg-plott-100 flex items-center justify-center text-xl">🐻</div>
+          <p class="mt-2 font-semibold text-sm">건국대</p>
+          <p class="text-[10px] text-plott-500 font-medium mt-0.5">45~70만</p>
+        </a>
+        <a href="#" class="group rounded-xl border border-gray-200 bg-white p-5 text-center hover:shadow-card hover:border-plott-500">
+          <div class="mx-auto w-12 h-12 rounded-full bg-plott-100 flex items-center justify-center text-xl">🎓</div>
+          <p class="mt-2 font-semibold text-sm">한양대</p>
+          <p class="text-[10px] text-plott-500 font-medium mt-0.5">48~70만</p>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- 목적별 + 계약 -->
+  <section class="py-8">
+    <div class="mx-auto max-w-[min(100%-2rem,1120px)]">
+      <div class="grid md:grid-cols-2 gap-6">
+        <!-- 목적별 -->
+        <div>
+          <p class="text-[11px] font-semibold uppercase tracking-[0.15em] text-plott-500 mb-3">BY PURPOSE</p>
+          <h3 class="text-[18px] font-bold mb-4">목적으로 찾기</h3>
+          <div class="grid grid-cols-2 gap-2">
+            <a href="#" class="rounded-xl border border-gray-200 p-4 text-center hover:shadow-card hover:border-plott-500">
+              <div class="text-2xl mb-1">🧳</div>
+              <p class="font-semibold text-sm">한달살기</p>
+            </a>
+            <a href="#" class="rounded-xl border border-gray-200 p-4 text-center hover:shadow-card hover:border-plott-500">
+              <div class="text-2xl mb-1">💼</div>
+              <p class="font-semibold text-sm">출장</p>
+            </a>
+            <a href="#" class="rounded-xl border border-gray-200 p-4 text-center hover:shadow-card hover:border-plott-500">
+              <div class="text-2xl mb-1">💻</div>
+              <p class="font-semibold text-sm">워케이션</p>
+            </a>
+            <a href="#" class="rounded-xl border border-gray-200 p-4 text-center hover:shadow-card hover:border-plott-500">
+              <div class="text-2xl mb-1">📦</div>
+              <p class="font-semibold text-sm">이사 과도기</p>
+            </a>
+          </div>
+        </div>
+        <!-- 계약·비자 -->
+        <div>
+          <p class="text-[11px] font-semibold uppercase tracking-[0.15em] text-plott-500 mb-3">CONTRACT & VISA</p>
+          <h3 class="text-[18px] font-bold mb-4">계약·비자 필수글</h3>
+          <div class="space-y-2">
+            <a href="#" class="flex items-center gap-3 rounded-xl border border-gray-200 p-3 hover:shadow-soft hover:border-plott-500">
+              <div class="text-2xl">📄</div>
+              <div class="flex-1"><p class="font-semibold text-sm">단기임대 계약서 용어 사전 10개</p></div>
+            </a>
+            <a href="#" class="flex items-center gap-3 rounded-xl border border-gray-200 p-3 hover:shadow-soft hover:border-plott-500">
+              <div class="text-2xl">💳</div>
+              <div class="flex-1"><p class="font-semibold text-sm">보증금·환불 완벽 가이드</p></div>
+            </a>
+            <a href="#" class="flex items-center gap-3 rounded-xl border border-gray-200 p-3 hover:shadow-soft hover:border-plott-500">
+              <div class="text-2xl">🛂</div>
+              <div class="flex-1"><p class="font-semibold text-sm">D-2 유학 비자 신청부터 입국까지</p></div>
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<!-- ═══════════════ PANEL: LIVING ═══════════════ -->
+<div id="panel-living" class="tab-panel">
+
+  <section class="bg-plott-100/30 py-6 border-b border-gray-100">
+    <div class="mx-auto max-w-[min(100%-2rem,1120px)] flex items-start gap-4">
+      <div class="h-12 w-12 shrink-0 rounded-xl bg-plott-500 flex items-center justify-center text-white text-2xl">🌱</div>
+      <div>
+        <p class="text-[11px] font-semibold uppercase tracking-[0.15em] text-plott-500">LIVING</p>
+        <h2 class="text-[20px] font-bold">한국 생활, 알아야 할 실전 정보</h2>
+        <p class="mt-1 text-[13px] text-gray-600">ARC·서류부터 은행·통신·가전·의료까지, 외국인에게 진짜 필요한 정보만</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Featured -->
+  <section class="py-10">
+    <div class="mx-auto max-w-[min(100%-2rem,1120px)]">
+      <p class="text-[11px] font-semibold uppercase tracking-[0.15em] text-plott-500 mb-4">MUST READ · FIRST STEP</p>
+      <div class="grid lg:grid-cols-5 gap-5">
+        <a href="./C-arc.html" class="lg:col-span-3 group rounded-2xl overflow-hidden border border-gray-200 bg-white shadow-card hover:-translate-y-0.5 transition-transform">
+          <div class="aspect-[16/9] bg-plott-100">
+            <img src="https://placehold.co/900x500/74594b/fff?text=ARC+3-Week+Guide" class="h-full w-full object-cover"/>
+          </div>
+          <div class="p-6">
+            <span class="rounded-[3px] bg-plott-100 text-plott-500 px-2 py-[3px] text-[11px] font-medium">🪪 ARC·서류</span>
+            <h3 class="mt-3 text-2xl font-bold group-hover:text-plott-500 leading-snug">ARC 3주 완성 가이드 — 거주지부터 수령까지</h3>
+            <p class="mt-2 text-sm text-gray-600">90일 이상 체류 외국인 필수 · 거주숙소제공확인서부터 출입국 방문까지</p>
+            <div class="mt-4 flex items-center gap-2 text-[11px] text-gray-500">
+              <span>10분 읽기</span><span>·</span><span>👁 2.8k</span>
+            </div>
+          </div>
+        </a>
+        <div class="lg:col-span-2 space-y-4">
+          <a href="#" class="group block rounded-2xl overflow-hidden border border-gray-200 bg-white shadow-soft">
+            <div class="flex">
+              <div class="w-32 shrink-0 aspect-square bg-plott-100"><img src="https://placehold.co/200x200/a78670/fff?text=Bank" class="h-full w-full object-cover"/></div>
+              <div class="p-4 min-w-0">
+                <span class="rounded-[3px] bg-plott-100 px-1.5 py-0.5 text-[10px] text-plott-500">💳 세팅</span>
+                <h4 class="mt-1.5 font-semibold text-[15px] leading-snug group-hover:text-plott-500 line-clamp-2">외국인 인터넷은행 3사 비교</h4>
+                <p class="text-[11px] text-gray-500 mt-2">👁 940</p>
+              </div>
+            </div>
+          </a>
+          <a href="#" class="group block rounded-2xl overflow-hidden border border-gray-200 bg-white shadow-soft">
+            <div class="flex">
+              <div class="w-32 shrink-0 aspect-square bg-plott-100"><img src="https://placehold.co/200x200/8d6f5a/fff?text=Washer" class="h-full w-full object-cover"/></div>
+              <div class="p-4 min-w-0">
+                <span class="rounded-[3px] bg-plott-100 px-1.5 py-0.5 text-[10px] text-plott-500">🛋 일상</span>
+                <h4 class="mt-1.5 font-semibold text-[15px] leading-snug group-hover:text-plott-500 line-clamp-2">한국식 세탁기·건조기 사용법</h4>
+                <p class="text-[11px] text-gray-500 mt-2">👁 1.3k</p>
+              </div>
+            </div>
+          </a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 서브 카테고리 그리드 -->
+  <section class="py-8 bg-plott-50/40 border-y border-gray-100">
+    <div class="mx-auto max-w-[min(100%-2rem,1120px)]">
+      <p class="text-[11px] font-semibold uppercase tracking-[0.15em] text-plott-500 mb-4">BROWSE BY TOPIC</p>
+      <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+        <a href="./C-arc.html" class="group rounded-xl border-2 border-plott-500 bg-white p-5 text-center hover:shadow-card">
+          <div class="text-3xl mb-2">🪪</div>
+          <p class="font-semibold text-sm">ARC·서류</p>
+          <p class="text-[10px] text-gray-500 mt-0.5">12편</p>
+        </a>
+        <a href="#" class="group rounded-xl border border-gray-200 bg-white p-5 text-center hover:shadow-card hover:border-plott-500">
+          <div class="text-3xl mb-2">💳</div>
+          <p class="font-semibold text-sm">생활 세팅</p>
+          <p class="text-[10px] text-gray-500 mt-0.5">은행·통신·교통</p>
+        </a>
+        <a href="#" class="group rounded-xl border border-gray-200 bg-white p-5 text-center hover:shadow-card hover:border-plott-500">
+          <div class="text-3xl mb-2">🛋</div>
+          <p class="font-semibold text-sm">일상 노하우</p>
+          <p class="text-[10px] text-gray-500 mt-0.5">가전·분리수거</p>
+        </a>
+        <a href="#" class="group rounded-xl border border-gray-200 bg-white p-5 text-center hover:shadow-card hover:border-plott-500">
+          <div class="text-3xl mb-2">🏥</div>
+          <p class="font-semibold text-sm">의료·건강</p>
+          <p class="text-[10px] text-gray-500 mt-0.5">병원·약국</p>
+        </a>
+        <a href="#" class="group rounded-xl border border-gray-200 bg-white p-5 text-center hover:shadow-card hover:border-plott-500">
+          <div class="text-3xl mb-2">🗣</div>
+          <p class="font-semibold text-sm">언어·매너</p>
+          <p class="text-[10px] text-gray-500 mt-0.5">존댓말·문화</p>
+        </a>
+        <a href="#" class="group rounded-xl border border-gray-200 bg-white p-5 text-center hover:shadow-card hover:border-plott-500">
+          <div class="text-3xl mb-2">📱</div>
+          <p class="font-semibold text-sm">앱·쇼핑</p>
+          <p class="text-[10px] text-gray-500 mt-0.5">배달·결제</p>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- 실전 아티클 -->
+  <section class="py-8">
+    <div class="mx-auto max-w-[min(100%-2rem,1120px)]">
+      <p class="text-[11px] font-semibold uppercase tracking-[0.15em] text-plott-500 mb-4">PRACTICAL ARTICLES</p>
+      <div class="grid md:grid-cols-3 gap-4">
+        <a href="#" class="group rounded-xl border border-gray-200 bg-white overflow-hidden hover:shadow-card">
+          <div class="aspect-[16/9] bg-plott-100"><img src="https://placehold.co/600x340/a78670/fff?text=Bank" class="h-full w-full object-cover"/></div>
+          <div class="p-4">
+            <h4 class="font-semibold group-hover:text-plott-500">외국인 인터넷은행 3사 비교</h4>
+            <p class="text-[12px] text-gray-600 mt-1">케이뱅크 vs 토스 vs 우리WON</p>
+          </div>
+        </a>
+        <a href="#" class="group rounded-xl border border-gray-200 bg-white overflow-hidden hover:shadow-card">
+          <div class="aspect-[16/9] bg-plott-100"><img src="https://placehold.co/600x340/c4a68a/fff?text=Telecom" class="h-full w-full object-cover"/></div>
+          <div class="p-4">
+            <h4 class="font-semibold group-hover:text-plott-500">외국인 통신 개통 가이드</h4>
+            <p class="text-[12px] text-gray-600 mt-1">SKT·KT·LGU+ 비교</p>
+          </div>
+        </a>
+        <a href="#" class="group rounded-xl border border-gray-200 bg-white overflow-hidden hover:shadow-card">
+          <div class="aspect-[16/9] bg-plott-100"><img src="https://placehold.co/600x340/8d6f5a/fff?text=Transit" class="h-full w-full object-cover"/></div>
+          <div class="p-4">
+            <h4 class="font-semibold group-hover:text-plott-500">티머니·기후동행카드 완전 정복</h4>
+            <p class="text-[12px] text-gray-600 mt-1">교통카드 + 환승 꿀팁</p>
+          </div>
+        </a>
+        <a href="#" class="group rounded-xl border border-gray-200 bg-white overflow-hidden hover:shadow-card">
+          <div class="aspect-[16/9] bg-plott-100"><img src="https://placehold.co/600x340/74594b/fff?text=Hospital" class="h-full w-full object-cover"/></div>
+          <div class="p-4">
+            <h4 class="font-semibold group-hover:text-plott-500">서울 다국어 병원 10곳</h4>
+            <p class="text-[12px] text-gray-600 mt-1">영어·중국어·일본어 가능</p>
+          </div>
+        </a>
+        <a href="#" class="group rounded-xl border border-gray-200 bg-white overflow-hidden hover:shadow-card">
+          <div class="aspect-[16/9] bg-plott-100"><img src="https://placehold.co/600x340/6b4f3e/fff?text=Delivery" class="h-full w-full object-cover"/></div>
+          <div class="p-4">
+            <h4 class="font-semibold group-hover:text-plott-500">배달앱 한국어 몰라도 쓰는 법</h4>
+            <p class="text-[12px] text-gray-600 mt-1">배민·쿠팡이츠·요기요</p>
+          </div>
+        </a>
+        <a href="#" class="group rounded-xl border border-gray-200 bg-white overflow-hidden hover:shadow-card">
+          <div class="aspect-[16/9] bg-plott-100"><img src="https://placehold.co/600x340/b59580/fff?text=Recycle" class="h-full w-full object-cover"/></div>
+          <div class="p-4">
+            <h4 class="font-semibold group-hover:text-plott-500">분리수거 완벽 가이드</h4>
+            <p class="text-[12px] text-gray-600 mt-1">한국식 쓰레기 분류</p>
+          </div>
+        </a>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<!-- ═══════════════ PANEL: LOCAL ═══════════════ -->
+<div id="panel-local" class="tab-panel">
+
+  <section class="bg-plott-100/30 py-6 border-b border-gray-100">
+    <div class="mx-auto max-w-[min(100%-2rem,1120px)] flex items-start gap-4">
+      <div class="h-12 w-12 shrink-0 rounded-xl bg-plott-500 flex items-center justify-center text-white text-2xl">🗺</div>
+      <div>
+        <p class="text-[11px] font-semibold uppercase tracking-[0.15em] text-plott-500">LOCAL</p>
+        <h2 class="text-[20px] font-bold">동네와 한국을 깊이 경험하기</h2>
+        <p class="mt-1 text-[13px] text-gray-600">매물이 아닌 동네 · 시장·카페·주말·스토리·거주 경험담</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Magazine-style feature -->
+  <section class="py-10">
+    <div class="mx-auto max-w-[min(100%-2rem,1120px)]">
+      <p class="text-[11px] font-semibold uppercase tracking-[0.15em] text-plott-500 mb-4">THIS WEEK'S STORY</p>
+      <a href="#" class="group block rounded-2xl overflow-hidden border border-gray-200 bg-white shadow-card">
+        <div class="aspect-[21/9] bg-plott-100">
+          <img src="https://placehold.co/1200x515/74594b/fff?text=Seoul+Forest+in+Spring" class="h-full w-full object-cover"/>
+        </div>
+        <div class="p-8">
+          <div class="flex items-center gap-2 mb-3">
+            <span class="rounded-[3px] bg-plott-100 text-plott-500 px-2 py-[3px] text-[11px] font-medium">🌸 SPRING 2026</span>
+            <span class="text-[11px] text-gray-500">2026.04.18</span>
+          </div>
+          <h3 class="text-[28px] sm:text-[32px] font-bold group-hover:text-plott-500 leading-tight">서울숲에 벚꽃이 피면 — 성수동에서 맞이하는 봄의 한 주</h3>
+          <p class="mt-3 text-sm text-gray-600 leading-relaxed">서울숲에서 시작해 연무장길·성수역까지 이어지는 벚꽃 루트. 성수에 머무는 동안 놓치지 말아야 할 봄의 풍경을 걸어서 정리했습니다.</p>
+          <div class="mt-4 flex items-center gap-2 text-[11px] text-gray-500">
+            <span>에디터 추천</span><span>·</span><span>12분 읽기</span>
+          </div>
+        </div>
+      </a>
+    </div>
+  </section>
+
+  <!-- 동네 시리즈 -->
+  <section class="py-8 bg-plott-50/40 border-y border-gray-100">
+    <div class="mx-auto max-w-[min(100%-2rem,1120px)]">
+      <div class="flex items-end justify-between mb-5">
+        <div>
+          <p class="text-[11px] font-semibold uppercase tracking-[0.15em] text-plott-500 mb-0.5">NEIGHBORHOOD SERIES</p>
+          <h3 class="text-[20px] font-bold">동네 시리즈</h3>
+          <p class="text-[12px] text-gray-500 mt-0.5">한 동네를 깊이 있게 · 매물·맛집·카페·산책 루트까지</p>
+        </div>
+        <a href="#" class="text-[12px] text-plott-500 hover:underline">시리즈 전체 →</a>
+      </div>
+      <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
+        <a href="./A-seongsu.html" class="group rounded-2xl overflow-hidden border border-gray-200 bg-white shadow-soft hover:shadow-card">
+          <div class="aspect-[16/10] bg-plott-100"><img src="https://placehold.co/600x375/c8a489/fff?text=Seongsu" class="h-full w-full object-cover"/></div>
+          <div class="p-5">
+            <p class="text-[11px] text-gray-500 mb-1">신규 시리즈</p>
+            <h4 class="text-lg font-bold group-hover:text-plott-500">성수 · Creative District</h4>
+            <p class="text-[13px] text-gray-600 mt-1.5">카페·편집샵·팝업의 성지</p>
+          </div>
+        </a>
+        <a href="#" class="group rounded-2xl overflow-hidden border border-gray-200 bg-white shadow-soft hover:shadow-card">
+          <div class="aspect-[16/10] bg-plott-100"><img src="https://placehold.co/600x375/8d6f5a/fff?text=Hongdae" class="h-full w-full object-cover"/></div>
+          <div class="p-5">
+            <p class="text-[11px] text-gray-500 mb-1">4편</p>
+            <h4 class="text-lg font-bold group-hover:text-plott-500">홍대 · Young & Free</h4>
+            <p class="text-[13px] text-gray-600 mt-1.5">클럽·인디·유학생 문화</p>
+          </div>
+        </a>
+        <a href="#" class="group rounded-2xl overflow-hidden border border-gray-200 bg-white shadow-soft hover:shadow-card">
+          <div class="aspect-[16/10] bg-plott-100"><img src="https://placehold.co/600x375/a78670/fff?text=Itaewon" class="h-full w-full object-cover"/></div>
+          <div class="p-5">
+            <p class="text-[11px] text-gray-500 mb-1">6편</p>
+            <h4 class="text-lg font-bold group-hover:text-plott-500">이태원 · Global Village</h4>
+            <p class="text-[13px] text-gray-600 mt-1.5">다국적 커뮤니티·맛집</p>
+          </div>
+        </a>
+        <a href="#" class="group rounded-2xl overflow-hidden border border-gray-200 bg-white shadow-soft hover:shadow-card">
+          <div class="aspect-[16/10] bg-plott-100"><img src="https://placehold.co/600x375/b59580/fff?text=Jeju" class="h-full w-full object-cover"/></div>
+          <div class="p-5">
+            <p class="text-[11px] text-gray-500 mb-1">8편</p>
+            <h4 class="text-lg font-bold group-hover:text-plott-500">제주 · Slow Life</h4>
+            <p class="text-[13px] text-gray-600 mt-1.5">워케이션 · 바다 · 산</p>
+          </div>
+        </a>
+        <a href="#" class="group rounded-2xl overflow-hidden border border-gray-200 bg-white shadow-soft hover:shadow-card">
+          <div class="aspect-[16/10] bg-plott-100"><img src="https://placehold.co/600x375/6b4f3e/fff?text=Busan" class="h-full w-full object-cover"/></div>
+          <div class="p-5">
+            <p class="text-[11px] text-gray-500 mb-1">5편</p>
+            <h4 class="text-lg font-bold group-hover:text-plott-500">부산 · Seaside Life</h4>
+            <p class="text-[13px] text-gray-600 mt-1.5">해운대 · 서면 · 광안리</p>
+          </div>
+        </a>
+        <a href="#" class="group rounded-2xl overflow-hidden border border-gray-200 bg-white shadow-soft hover:shadow-card">
+          <div class="aspect-[16/10] bg-plott-100"><img src="https://placehold.co/600x375/74594b/fff?text=Gangnam" class="h-full w-full object-cover"/></div>
+          <div class="p-5">
+            <p class="text-[11px] text-gray-500 mb-1">3편</p>
+            <h4 class="text-lg font-bold group-hover:text-plott-500">강남 · Business Hub</h4>
+            <p class="text-[13px] text-gray-600 mt-1.5">테헤란로·가로수길</p>
+          </div>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- 리얼 스토리 -->
+  <section class="py-8">
+    <div class="mx-auto max-w-[min(100%-2rem,1120px)]">
+      <div class="flex items-end justify-between mb-5">
+        <div>
+          <p class="text-[11px] font-semibold uppercase tracking-[0.15em] text-plott-500 mb-0.5">REAL STORIES</p>
+          <h3 class="text-[20px] font-bold">📖 이곳에 살아본 사람들</h3>
+        </div>
+        <a href="#" class="text-[12px] text-plott-500 hover:underline">스토리 전체 →</a>
+      </div>
+      <div class="grid md:grid-cols-3 gap-4">
+        <a href="#" class="group rounded-xl overflow-hidden border border-gray-200 bg-white shadow-soft hover:shadow-card">
+          <div class="aspect-[16/10] bg-plott-100"><img src="https://placehold.co/600x375/74594b/fff?text=Linh" class="h-full w-full object-cover"/></div>
+          <div class="p-4">
+            <div class="flex items-center gap-2 text-[11px] text-gray-500 mb-1"><span>🇻🇳 Linh, 23</span><span>·</span><span>유학생 · 30일</span></div>
+            <h3 class="font-semibold group-hover:text-plott-500">"한국어를 못해도, 이 방은 나를 환영해줬다"</h3>
+          </div>
+        </a>
+        <a href="#" class="group rounded-xl overflow-hidden border border-gray-200 bg-white shadow-soft hover:shadow-card">
+          <div class="aspect-[16/10] bg-plott-100"><img src="https://placehold.co/600x375/a78670/fff?text=Max" class="h-full w-full object-cover"/></div>
+          <div class="p-4">
+            <div class="flex items-center gap-2 text-[11px] text-gray-500 mb-1"><span>🇩🇪 Max, 31</span><span>·</span><span>노마드 · 60일</span></div>
+            <h3 class="font-semibold group-hover:text-plott-500">성수동 두 달, 노마드의 리듬을 찾아가며</h3>
+          </div>
+        </a>
+        <a href="#" class="group rounded-xl overflow-hidden border border-gray-200 bg-white shadow-soft hover:shadow-card">
+          <div class="aspect-[16/10] bg-plott-100"><img src="https://placehold.co/600x375/8d6f5a/fff?text=Aki" class="h-full w-full object-cover"/></div>
+          <div class="p-4">
+            <div class="flex items-center gap-2 text-[11px] text-gray-500 mb-1"><span>🇯🇵 Aki, 35</span><span>·</span><span>주재원 · 90일</span></div>
+            <h3 class="font-semibold group-hover:text-plott-500">도쿄에서 서울로, 판교 주재원의 3개월</h3>
+          </div>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- 주말·여행 -->
+  <section class="py-8 bg-plott-50/40 border-y border-gray-100">
+    <div class="mx-auto max-w-[min(100%-2rem,1120px)]">
+      <div class="flex items-end justify-between mb-5">
+        <div>
+          <p class="text-[11px] font-semibold uppercase tracking-[0.15em] text-plott-500 mb-0.5">WEEKEND & TRAVEL</p>
+          <h3 class="text-[20px] font-bold">🗾 주말·근교 여행</h3>
+        </div>
+      </div>
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <a href="#" class="group rounded-xl border border-gray-200 bg-white p-4 hover:shadow-card text-center">
+          <div class="text-3xl mb-2">🌊</div>
+          <p class="text-sm font-semibold group-hover:text-plott-500">강릉 당일</p>
+        </a>
+        <a href="#" class="group rounded-xl border border-gray-200 bg-white p-4 hover:shadow-card text-center">
+          <div class="text-3xl mb-2">🏞</div>
+          <p class="text-sm font-semibold group-hover:text-plott-500">북한산 등산</p>
+        </a>
+        <a href="#" class="group rounded-xl border border-gray-200 bg-white p-4 hover:shadow-card text-center">
+          <div class="text-3xl mb-2">🎨</div>
+          <p class="text-sm font-semibold group-hover:text-plott-500">서울 미술관</p>
+        </a>
+        <a href="#" class="group rounded-xl border border-gray-200 bg-white p-4 hover:shadow-card text-center">
+          <div class="text-3xl mb-2">🍺</div>
+          <p class="text-sm font-semibold group-hover:text-plott-500">성수 펍 투어</p>
+        </a>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<!-- Newsletter -->
+<section class="py-10 bg-plott-100/60 border-t border-gray-100">
+  <div class="mx-auto max-w-[min(100%-2rem,720px)] text-center">
+    <p class="text-2xl">📬</p>
+    <h2 class="mt-2 text-[22px] font-bold">매주 새로운 이야기</h2>
+    <p class="mt-1 text-[14px] text-gray-600">관심 필러(STAY / LIVING / LOCAL)를 선택하시면 맞춤 콘텐츠를 이메일로 보내드려요</p>
+    <div class="mt-5 flex gap-2 max-w-md mx-auto">
+      <input type="email" placeholder="이메일 주소" class="flex-1 h-10 rounded-md border border-gray-300 bg-white px-3 text-sm outline-none focus:border-plott-500 focus:ring-2 focus:ring-plott-500/20"/>
+      <button class="h-10 rounded-md bg-plott-500 px-5 text-sm font-semibold text-white hover:bg-plott-700">구독</button>
+    </div>
+  </div>
+</section>
+
+<!-- Footer -->
+<footer class="border-t border-gray-200 bg-plott-50">
+  <div class="mx-auto max-w-[min(100%-2rem,1120px)] py-12 text-sm">
+    <div class="grid md:grid-cols-4 gap-8">
+      <div>
+        <a class="flex items-center gap-2" href="#">
+          <div class="flex h-8 w-8 items-center justify-center rounded-full bg-plott-500">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21V9l9-7 9 7v12h-6v-8h-6v8z"/></svg>
+          </div>
+          <span class="text-[17px] font-bold">plott <span class="font-medium text-plott-500">LIFE</span></span>
+        </a>
+        <p class="mt-3 text-[13px] leading-relaxed text-gray-600">한국에서 가장 쉬운 단기임대 방 찾기.<br/>유학생·출장자·한달살기 여행자 전용.</p>
+      </div>
+      <div>
+        <p class="text-[13px] font-bold">🏠 STAY GUIDE</p>
+        <ul class="mt-3 space-y-2 text-[13px] text-gray-600">
+          <li><a class="hover:text-plott-500" href="#">지역으로</a></li>
+          <li><a class="hover:text-plott-500" href="#">학교로</a></li>
+          <li><a class="hover:text-plott-500" href="#">시세</a></li>
+          <li><a class="hover:text-plott-500" href="#">계약·비자</a></li>
+        </ul>
+      </div>
+      <div>
+        <p class="text-[13px] font-bold">🌱 LIVING</p>
+        <ul class="mt-3 space-y-2 text-[13px] text-gray-600">
+          <li><a class="hover:text-plott-500" href="#">ARC·서류</a></li>
+          <li><a class="hover:text-plott-500" href="#">생활 세팅</a></li>
+          <li><a class="hover:text-plott-500" href="#">일상 노하우</a></li>
+          <li><a class="hover:text-plott-500" href="#">의료·건강</a></li>
+        </ul>
+      </div>
+      <div>
+        <p class="text-[13px] font-bold">🗺 LOCAL</p>
+        <ul class="mt-3 space-y-2 text-[13px] text-gray-600">
+          <li><a class="hover:text-plott-500" href="#">동네 시리즈</a></li>
+          <li><a class="hover:text-plott-500" href="#">리얼 스토리</a></li>
+          <li><a class="hover:text-plott-500" href="#">주말·여행</a></li>
+          <li><a class="hover:text-plott-500" href="#">문화·축제</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="mt-10 flex flex-col md:flex-row md:justify-between gap-4 border-t border-gray-200 pt-6 text-[12px] text-gray-500">
+      <div class="space-y-0.5">
+        <p><span class="font-semibold text-gray-700">plott LIFE Inc.</span> · 대표: 홍길동 · 사업자등록번호: 123-45-67890</p>
+        <p>서울특별시 강남구 테헤란로 123, 10층 · 고객센터 10:00–18:00</p>
+      </div>
+      <div class="flex flex-wrap gap-x-4">
+        <a class="hover:text-plott-500" href="#">이용약관</a>
+        <a class="font-semibold text-gray-700 hover:text-plott-500" href="#">개인정보처리방침</a>
+        <a class="hover:text-plott-500" href="#">운영정책</a>
+      </div>
+    </div>
+    <p class="mt-6 text-center text-[11px] text-gray-400">© 2026 plott LIFE Inc.</p>
+  </div>
+</footer>
+
+<script>
+  function switchTab(tab) {
+    // Panels
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    document.getElementById('panel-' + tab).classList.add('active');
+    // Buttons
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.classList.remove('border-plott-500');
+      btn.classList.add('border-transparent');
+      btn.setAttribute('aria-selected', 'false');
+      // restore muted state
+      const emoji = btn.querySelector('span.text-2xl');
+      const label = btn.querySelector('div > p:nth-child(2)');
+      const kicker = btn.querySelector('div > p:first-child');
+      if (emoji) emoji.classList.add('opacity-50');
+      if (label) { label.classList.remove('text-plott-500'); label.classList.add('text-gray-700'); }
+      if (kicker) { kicker.classList.remove('text-plott-500'); kicker.classList.add('text-gray-400'); }
+    });
+    const active = document.getElementById('tab-btn-' + tab);
+    active.classList.add('border-plott-500');
+    active.classList.remove('border-transparent');
+    active.setAttribute('aria-selected', 'true');
+    const aEmoji = active.querySelector('span.text-2xl');
+    const aLabel = active.querySelector('div > p:nth-child(2)');
+    const aKicker = active.querySelector('div > p:first-child');
+    if (aEmoji) aEmoji.classList.remove('opacity-50');
+    if (aLabel) { aLabel.classList.add('text-plott-500'); aLabel.classList.remove('text-gray-700'); }
+    if (aKicker) { aKicker.classList.add('text-plott-500'); aKicker.classList.remove('text-gray-400'); }
+    window.scrollTo({ top: 200, behavior: 'smooth' });
+  }
+</script>
+
+</body>
+</html>

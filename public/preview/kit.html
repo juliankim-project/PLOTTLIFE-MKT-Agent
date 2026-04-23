@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>plott LIFE 블로그 · 컴포넌트 킷</title>
+<link rel="stylesheet" href="./shared.css" />
+<style>
+  .kit-section { padding: 32px 0; border-bottom: 1px dashed var(--gray-200); }
+  .kit-title { font-size: 12px; font-weight: 700; letter-spacing: 0.15em; text-transform: uppercase; color: var(--gray-500); margin-bottom: 16px; }
+  .kit-h { font-size: 20px; font-weight: 700; margin-bottom: 16px; }
+  .kit-note { font-size: 12px; color: var(--gray-500); margin-top: 8px; }
+  .kit-swatch { width: 48px; height: 48px; border-radius: 8px; border: 1px solid var(--gray-200); }
+  .kit-token-row { display: flex; align-items: center; gap: 12px; padding: 8px; border-radius: 6px; }
+  .kit-token-row:hover { background: var(--gray-50); }
+  .kit-token-row code { font-size: 12px; color: var(--gray-600); }
+  pre code { display: block; background: var(--gray-900); color: #e5e7eb; padding: 12px; border-radius: 8px; font-size: 12px; overflow-x: auto; font-family: ui-monospace, monospace; }
+</style>
+</head>
+<body>
+
+<div class="chrome-preview-bar">
+  <div><span class="badge">🎨 KIT</span><span>컴포넌트 · 토큰 · 패턴 라이브러리</span></div>
+  <div><a href="./index.html">← 목록</a></div>
+</div>
+
+<header class="hero-light">
+  <div class="hero-light-inner container">
+    <p class="kicker">PLOTT LIFE DESIGN KIT</p>
+    <h1>컴포넌트 킷</h1>
+    <p class="lead"><code>shared.css</code> 하나로 전체 프리뷰 HTML이 동일한 UI 언어를 사용합니다. 여기서 컴포넌트를 확인·조정하면 모든 페이지에 즉시 반영.</p>
+  </div>
+</header>
+
+<main class="container section">
+
+  <!-- ── TOKENS ── -->
+  <div class="kit-section">
+    <p class="kit-title">01 · Tokens</p>
+    <h2 class="kit-h">🎨 색상 팔레트</h2>
+    <div class="grid-cards is-4">
+      <div class="kit-token-row"><div class="kit-swatch" style="background:#faf8f5"></div><div><p style="font-weight:600; font-size:13px;">plott-50</p><code>#faf8f5</code></div></div>
+      <div class="kit-token-row"><div class="kit-swatch" style="background:#f5f0e5"></div><div><p style="font-weight:600; font-size:13px;">plott-100</p><code>#f5f0e5</code></div></div>
+      <div class="kit-token-row"><div class="kit-swatch" style="background:#e7ded1"></div><div><p style="font-weight:600; font-size:13px;">plott-200</p><code>#e7ded1</code></div></div>
+      <div class="kit-token-row"><div class="kit-swatch" style="background:#74594b"></div><div><p style="font-weight:600; font-size:13px;">plott-500</p><code>#74594b</code></div></div>
+      <div class="kit-token-row"><div class="kit-swatch" style="background:#3d2b1f"></div><div><p style="font-weight:600; font-size:13px;">plott-700</p><code>#3d2b1f</code></div></div>
+      <div class="kit-token-row"><div class="kit-swatch" style="background:#4a9358"></div><div><p style="font-weight:600; font-size:13px;">success</p><code>#4a9358</code></div></div>
+      <div class="kit-token-row"><div class="kit-swatch" style="background:#d4902a"></div><div><p style="font-weight:600; font-size:13px;">warning</p><code>#d4902a</code></div></div>
+      <div class="kit-token-row"><div class="kit-swatch" style="background:#5b7fa0"></div><div><p style="font-weight:600; font-size:13px;">info</p><code>#5b7fa0</code></div></div>
+    </div>
+    <p class="kit-note">CSS 변수로 관리 · <code>shared.css</code> 상단 <code>:root</code> 블록에서 일괄 수정 가능</p>
+  </div>
+
+  <!-- ── TYPOGRAPHY ── -->
+  <div class="kit-section">
+    <p class="kit-title">02 · Typography</p>
+    <h2 class="kit-h">📝 타이포그래피</h2>
+    <div class="stack-3">
+      <div>
+        <p style="font-size: 48px; font-weight:700; letter-spacing:-0.02em;">H1 · 48px Bold</p>
+        <p class="kit-note"><code>.hero-dark h1</code> / <code>.hero-light h1</code> — 메인 페이지 타이틀</p>
+      </div>
+      <div>
+        <p style="font-size: 24px; font-weight:700;">H2 · 24px Bold</p>
+        <p class="kit-note"><code>.chapter-heading h2</code> — 챕터 제목</p>
+      </div>
+      <div>
+        <p style="font-size: 20px; font-weight:700;">H3 · 20px Bold</p>
+        <p class="kit-note"><code>.section-head h3</code> — 섹션 헤더</p>
+      </div>
+      <div>
+        <p style="font-size: 18px; font-weight:600;">H4 · 18px Semibold</p>
+        <p class="kit-note"><code>.prose h3</code> — 본문 내 소제목</p>
+      </div>
+      <div>
+        <p style="font-size: 15px;">Body · 15px / line-height 1.8</p>
+        <p class="kit-note"><code>.prose p</code> — 본문 단락</p>
+      </div>
+      <div>
+        <p class="kicker">KICKER · 11PX UPPERCASE</p>
+        <p class="kit-note"><code>.kicker</code> — 섹션 라벨 (대문자 트래킹)</p>
+      </div>
+      <div>
+        <span class="chapter-num">01</span>
+        <p class="kit-note"><code>.chapter-num</code> — Georgia Serif 56px</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── BUTTONS ── -->
+  <div class="kit-section">
+    <p class="kit-title">03 · Buttons</p>
+    <h2 class="kit-h">🔘 버튼</h2>
+    <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px;">
+      <button class="btn btn-primary">Primary</button>
+      <button class="btn btn-secondary">Secondary</button>
+      <button class="btn btn-ghost">Ghost</button>
+      <button class="btn btn-primary btn-sm">Primary SM</button>
+      <button class="btn btn-primary btn-lg">Primary LG</button>
+    </div>
+    <pre><code>&lt;button class="btn btn-primary"&gt;Primary&lt;/button&gt;
+&lt;button class="btn btn-secondary"&gt;Secondary&lt;/button&gt;
+&lt;button class="btn btn-ghost"&gt;Ghost&lt;/button&gt;
+&lt;button class="btn btn-primary btn-sm"&gt;Small&lt;/button&gt;
+&lt;button class="btn btn-primary btn-lg"&gt;Large&lt;/button&gt;</code></pre>
+  </div>
+
+  <!-- ── BADGES & TAGS ── -->
+  <div class="kit-section">
+    <p class="kit-title">04 · Badges & Tags</p>
+    <h2 class="kit-h">🏷 뱃지·태그</h2>
+    <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px; align-items:center;">
+      <span class="pillar-badge">🏠 STAY GUIDE</span>
+      <span class="pillar-badge is-sub">🗺 지역으로</span>
+      <a class="tag-chip">#성수</a>
+      <a class="tag-chip is-active">#서울</a>
+      <a class="tag-chip is-sub">#노마드</a>
+    </div>
+    <pre><code>&lt;span class="pillar-badge"&gt;🏠 STAY GUIDE&lt;/span&gt;
+&lt;span class="pillar-badge is-sub"&gt;🗺 지역으로&lt;/span&gt;
+&lt;a class="tag-chip"&gt;#성수&lt;/a&gt;
+&lt;a class="tag-chip is-active"&gt;#서울&lt;/a&gt;</code></pre>
+  </div>
+
+  <!-- ── INFO BOXES ── -->
+  <div class="kit-section">
+    <p class="kit-title">05 · Info Boxes</p>
+    <h2 class="kit-h">📦 인포 박스 4종</h2>
+    <div class="stack-2">
+      <div class="box box-tip">💡 <strong>Tip</strong> — 3개월 이상 계약 시 평균 12% 할인됩니다.</div>
+      <div class="box box-recommend">✅ <strong>Recommend</strong> — 노마드·크리에이터에게 특히 잘 맞습니다.</div>
+      <div class="box box-warning">⚠️ <strong>Warning</strong> — 금·토요일 밤엔 번잡할 수 있어요.</div>
+      <div class="box box-note">📌 <strong>Note</strong> — 하이코리아 온라인 예약 필수. 워크인 불가.</div>
+    </div>
+    <pre style="margin-top:16px;"><code>&lt;div class="box box-tip"&gt;💡 &lt;strong&gt;Tip&lt;/strong&gt; — 내용&lt;/div&gt;
+&lt;div class="box box-recommend"&gt;✅ &lt;strong&gt;Recommend&lt;/strong&gt; — 내용&lt;/div&gt;
+&lt;div class="box box-warning"&gt;⚠️ &lt;strong&gt;Warning&lt;/strong&gt; — 내용&lt;/div&gt;
+&lt;div class="box box-note"&gt;📌 &lt;strong&gt;Note&lt;/strong&gt; — 내용&lt;/div&gt;</code></pre>
+  </div>
+
+  <!-- ── CHAPTER HEADING ── -->
+  <div class="kit-section">
+    <p class="kit-title">06 · Chapter Heading</p>
+    <h2 class="kit-h">📚 챕터 헤딩</h2>
+    <div class="chapter">
+      <span class="chapter-num">03</span>
+      <div class="chapter-heading">
+        <p class="kicker">LISTINGS</p>
+        <h2>추천 매물 10선</h2>
+        <p class="sub">인증 매물만 엄선했어요</p>
+      </div>
+    </div>
+    <pre><code>&lt;div class="chapter"&gt;
+  &lt;span class="chapter-num"&gt;03&lt;/span&gt;
+  &lt;div class="chapter-heading"&gt;
+    &lt;p class="kicker"&gt;LISTINGS&lt;/p&gt;
+    &lt;h2&gt;추천 매물 10선&lt;/h2&gt;
+    &lt;p class="sub"&gt;인증 매물만 엄선했어요&lt;/p&gt;
+  &lt;/div&gt;
+&lt;/div&gt;</code></pre>
+  </div>
+
+  <!-- ── QUICK GUIDE ── -->
+  <div class="kit-section">
+    <p class="kit-title">07 · Quick Guide Box</p>
+    <h2 class="kit-h">⚡ 퀵 가이드 박스</h2>
+    <div class="quick-guide">
+      <div class="quick-guide-header">
+        <span class="icon">⚡</span>
+        <span class="label">Quick Guide · 30초 요약</span>
+      </div>
+      <div class="quick-guide-grid">
+        <div class="quick-guide-item">
+          <div style="display:flex; align-items:center;"><span class="num">1</span><span class="cat">예시</span></div>
+          <p class="value">핵심 지표</p>
+          <p class="sub">보조 설명 한 줄</p>
+        </div>
+        <div class="quick-guide-item">
+          <div style="display:flex; align-items:center;"><span class="num">2</span><span class="cat">예시</span></div>
+          <p class="value">핵심 지표</p>
+          <p class="sub">보조 설명 한 줄</p>
+        </div>
+        <div class="quick-guide-item">
+          <div style="display:flex; align-items:center;"><span class="num">3</span><span class="cat">예시</span></div>
+          <p class="value">핵심 지표</p>
+          <p class="sub">보조 설명 한 줄</p>
+        </div>
+        <div class="quick-guide-item">
+          <div style="display:flex; align-items:center;"><span class="num">4</span><span class="cat">예시</span></div>
+          <p class="value">핵심 지표</p>
+          <p class="sub">보조 설명 한 줄</p>
+        </div>
+      </div>
+    </div>
+    <p class="kit-note" style="margin-top:8px;">글 상단에 배치 · 2×2 또는 1×4 그리드 자동 반응형</p>
+  </div>
+
+  <!-- ── CARDS ── -->
+  <div class="kit-section">
+    <p class="kit-title">08 · Cards</p>
+    <h2 class="kit-h">🎴 카드</h2>
+
+    <p style="font-size:13px; color:var(--gray-600); margin-bottom:8px;">기본 카드 (이미지 + 텍스트)</p>
+    <div class="grid-cards is-3">
+      <a href="#" class="card is-lifted">
+        <div class="card-thumb"><img src="https://placehold.co/600x340/c8a489/fff?text=Sample" alt=""/></div>
+        <div class="card-body">
+          <p class="card-title">카드 제목 예시</p>
+          <p class="card-sub">보조 텍스트</p>
+        </div>
+      </a>
+      <a href="#" class="card is-lifted is-accent">
+        <div class="card-thumb"><img src="https://placehold.co/600x340/a78670/fff?text=Accent" alt=""/></div>
+        <div class="card-body">
+          <p class="card-title">액센트 카드</p>
+          <p class="card-sub">border-color: plott-500</p>
+        </div>
+      </a>
+      <a href="#" class="card">
+        <div class="card-h">
+          <div class="card-thumb"><img src="https://placehold.co/200x200/8d6f5a/fff?text=H" alt=""/></div>
+          <div class="card-body">
+            <p class="card-title">가로 카드</p>
+            <p class="card-sub"><code>.card-h</code> 클래스</p>
+          </div>
+        </div>
+      </a>
+    </div>
+
+    <p style="font-size:13px; color:var(--gray-600); margin: 16px 0 8px;">매물 카드 (stats 포함)</p>
+    <article class="listing-card">
+      <div class="hero"><img src="https://placehold.co/900x400/c8a489/fff?text=Listing+Sample" alt=""/></div>
+      <div class="body">
+        <h3 class="title">#1 샘플 매물 — 위치·특징</h3>
+        <p class="desc">보조 설명 · 지하철역까지 몇 분</p>
+        <div class="stats">
+          <div class="stat"><p>월세</p><p>68만원</p></div>
+          <div class="stat"><p>주세</p><p>24만원</p></div>
+          <div class="stat"><p>보증금</p><p>0원</p></div>
+          <div class="stat"><p>면적</p><p>16㎡</p></div>
+        </div>
+        <a href="#" class="btn btn-primary btn-sm" style="margin-top:12px;">이 방 둘러보기 →</a>
+      </div>
+    </article>
+  </div>
+
+  <!-- ── SECTION HEAD ── -->
+  <div class="kit-section">
+    <p class="kit-title">09 · Section Head</p>
+    <h2 class="kit-h">📍 섹션 헤더</h2>
+    <div class="section-head">
+      <div>
+        <p class="kicker">BY REGION</p>
+        <h3>지역으로 찾기</h3>
+        <p class="sub">동네별 허브 — 시세·매물·생활·교통</p>
+      </div>
+      <a href="#" class="action">전체 지역 →</a>
+    </div>
+    <pre><code>&lt;div class="section-head"&gt;
+  &lt;div&gt;
+    &lt;p class="kicker"&gt;BY REGION&lt;/p&gt;
+    &lt;h3&gt;지역으로 찾기&lt;/h3&gt;
+    &lt;p class="sub"&gt;보조 설명&lt;/p&gt;
+  &lt;/div&gt;
+  &lt;a href="#" class="action"&gt;전체 →&lt;/a&gt;
+&lt;/div&gt;</code></pre>
+  </div>
+
+  <!-- ── LAYOUT ── -->
+  <div class="kit-section">
+    <p class="kit-title">10 · Layout</p>
+    <h2 class="kit-h">📐 레이아웃 컨테이너</h2>
+    <ul style="font-size:14px; color:var(--gray-700);">
+      <li><code>.container-wide</code> — 1120px (홈·그리드 풍부한 섹션)</li>
+      <li><code>.container</code> — 1024px (기본)</li>
+      <li><code>.container-narrow</code> — 720px (본문 읽기 최적)</li>
+      <li><code>.section</code> — 상하 40px 여백</li>
+      <li><code>.section-sm</code> / <code>.section-lg</code> — 24px / 64px</li>
+      <li><code>.section-tint</code> — 베이지 배경 섹션</li>
+      <li><code>.two-col</code> — 본문 + sticky 사이드바 (1024px 미만 단일열)</li>
+    </ul>
+  </div>
+
+  <!-- ── BUTTONS: apply in action ── -->
+  <div class="kit-section">
+    <p class="kit-title">11 · Bottom CTA Band</p>
+    <h2 class="kit-h">🎯 하단 CTA 밴드</h2>
+  </div>
+</main>
+
+<section class="cta-band">
+  <div class="container-narrow">
+    <h2>샘플 CTA 밴드</h2>
+    <p>갈색 배경 · 중앙 정렬 · 2개 액션</p>
+    <div class="actions">
+      <a href="#" class="btn btn-inverted btn-lg">주요 액션</a>
+      <a href="#" class="btn btn-secondary btn-lg">보조 액션</a>
+    </div>
+  </div>
+</section>
+
+<!-- ── HOW TO ITERATE ── -->
+<main class="container section">
+  <div class="kit-section">
+    <p class="kit-title">12 · 조정·이터레이션 가이드</p>
+    <h2 class="kit-h">🛠 어떻게 조정하나요?</h2>
+    <ol style="font-size:14px; color:var(--gray-700); padding-left:1.25rem; line-height:1.8;">
+      <li><strong>전역 색상·폰트·간격 조정</strong> → <code>shared.css</code> 최상단 <code>:root</code> 변수 수정. 모든 페이지 즉시 반영.</li>
+      <li><strong>컴포넌트 스타일 조정</strong> → <code>shared.css</code> 해당 섹션 (예: <code>/* ── Cards ── */</code>) 안의 클래스 규칙 수정.</li>
+      <li><strong>새 컴포넌트 추가</strong> → <code>shared.css</code> 에 새 클래스 추가 → 이 페이지(<code>kit.html</code>)에도 예시 추가.</li>
+      <li><strong>페이지별 예외 스타일</strong> → 각 HTML 파일 <code>&lt;style&gt;</code> 블록에만 지역 추가.</li>
+      <li><strong>새 페이지 만들 때</strong> → <code>A-seongsu.html</code> 구조를 복제 → 본문 교체.</li>
+    </ol>
+  </div>
+</main>
+
+<!-- ═══ Footer ═══ -->
+<footer class="chrome-footer">
+  <div class="chrome-footer-inner container-wide">
+    <div class="chrome-footer-copy">
+      <p style="font-weight:600; color:var(--gray-700); margin-bottom:8px;">plott LIFE Design Kit</p>
+      <p>shared.css · 1개 파일로 전체 UI 관리</p>
+      <p style="margin-top:12px;">© 2026 plott LIFE Inc.</p>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

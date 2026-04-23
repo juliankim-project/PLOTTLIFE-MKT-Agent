@@ -1,0 +1,98 @@
+{
+  "description": "콘텐츠 타입별 템플릿 가이드",
+  "types": [
+    {
+      "id": "region-guide",
+      "label": "지역 가이드",
+      "best_for": "traffic",
+      "structure": [
+        { "section": "지역 소개", "bullets": ["교통·위치", "주변 인프라", "거주 분위기"] },
+        { "section": "추천 방 5~10개", "bullets": ["매물 카드 임베드", "가격대", "특징"] },
+        { "section": "교통 안내", "bullets": ["지하철/버스", "공항·터미널 이동"] },
+        { "section": "주변 편의시설", "bullets": ["마트·편의점", "카페·식당", "병원·약국"] },
+        { "section": "FAQ", "bullets": ["자주 묻는 질문"] }
+      ],
+      "example_titles": [
+        "서울대 근처 한달살기 방 추천 TOP 10",
+        "건대입구 단기임대 완벽 가이드",
+        "강남역 출장 숙소 베스트 8"
+      ]
+    },
+    {
+      "id": "lifestyle",
+      "label": "라이프스타일",
+      "best_for": "dwell_time",
+      "structure": [
+        { "section": "도입 스토리", "bullets": ["구체적 상황·감정"] },
+        { "section": "경험 본문", "bullets": ["일상", "발견", "어려움"] },
+        { "section": "실용 팁", "bullets": ["독자에게 전하는 조언"] },
+        { "section": "마무리", "bullets": ["다음 이야기 예고"] }
+      ],
+      "example_titles": [
+        "한국 유학생 첫 자취 1개월, 이렇게 정착했습니다",
+        "디지털노마드로 서울에서 한 달 살기 — 일과 휴식의 균형"
+      ]
+    },
+    {
+      "id": "host-story",
+      "label": "호스트 스토리",
+      "best_for": "dwell_time",
+      "structure": [
+        { "section": "호스트 소개", "bullets": ["배경·계기"] },
+        { "section": "운영 노하우", "bullets": ["매물 준비", "게스트 소통"] },
+        { "section": "수익·성과", "bullets": ["실제 수치"] },
+        { "section": "미래 계획", "bullets": ["다음 단계"] }
+      ],
+      "example_titles": [
+        "20평 원룸으로 월 300만원 수익을 만든 호스트 인터뷰",
+        "퇴사하고 단기임대 운영 1년차 호스트의 솔직한 후기"
+      ]
+    },
+    {
+      "id": "guest-story",
+      "label": "게스트 스토리",
+      "best_for": "dwell_time",
+      "structure": [
+        { "section": "게스트 배경", "bullets": ["국적·목적·기간"] },
+        { "section": "방 선택 과정", "bullets": ["검색·비교"] },
+        { "section": "거주 경험", "bullets": ["일상·만남"] },
+        { "section": "다음 플랜", "bullets": ["다음 여정"] }
+      ],
+      "example_titles": [
+        "베트남 유학생이 처음 한국에서 방 구한 이야기",
+        "독일인 개발자의 서울 3개월 노마드 일기"
+      ]
+    },
+    {
+      "id": "seo-longtail",
+      "label": "SEO 롱테일",
+      "best_for": "traffic",
+      "structure": [
+        { "section": "질문 정의", "bullets": ["독자가 검색한 이유"] },
+        { "section": "답변 요약 (TL;DR)", "bullets": ["1~2문장 결론"] },
+        { "section": "상세 설명", "bullets": ["근거·방법·예시"] },
+        { "section": "관련 FAQ", "bullets": ["후속 질문"] },
+        { "section": "CTA", "bullets": ["다음 액션"] }
+      ],
+      "example_titles": [
+        "서울 단기임대 보증금 없는 방 찾는 법",
+        "외국인이 한국에서 1달 임대 계약하는 4가지 방법"
+      ]
+    },
+    {
+      "id": "partnership",
+      "label": "제휴·파트너십",
+      "best_for": "conversion",
+      "structure": [
+        { "section": "파트너 소개", "bullets": ["누구인지"] },
+        { "section": "추천 이유", "bullets": ["공통 가치"] },
+        { "section": "혜택·조건", "bullets": ["구체적 오퍼"] },
+        { "section": "이용 방법", "bullets": ["단계별 안내"] }
+      ],
+      "example_titles": [
+        "연세대 국제처 추천 — 유학생 단기임대 가이드",
+        "서울시 외국인종합지원센터 X 플라트라이프"
+      ]
+    }
+  ]
+}
