@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { Icon, PageHeader } from "../_ui"
 import { PERSONAS } from "../_lib/stages"
@@ -21,25 +21,38 @@ const INPUTS: InputSource[] = [
   { id: "booking", icon: "users", label: "예약 로그 패턴", meta: "1.2K 전환 스니펫" },
 ]
 
-interface Idea {
-  t: string
-  cluster: string
-  score: number
-  vol: string
-  fit: string
-  hot?: boolean
+const CLUSTER_LABEL: Record<string, string> = {
+  consider: "Consider",
+  prepare: "Prepare",
+  arrive: "Arrive",
+  settle: "Settle",
+  live: "Live",
+  explore: "Explore",
+  change: "Change",
 }
 
-const IDEAS: Idea[] = [
-  { t: "보증금 0원 단기임대 추천 TOP 10 — 서울 전 지역", cluster: "Prepare", score: 94, vol: "34K", fit: "외국인 유학생", hot: true },
-  { t: "외국인등록증(ARC) 3주 완성 가이드", cluster: "Settle", score: 92, vol: "18K", fit: "외국인 유학생", hot: true },
-  { t: "성수동 단기임대 완벽 가이드 — 노마드 핫플 2026", cluster: "Explore", score: 89, vol: "12K", fit: "디지털 노마드" },
-  { t: "서울 vs 부산 vs 제주 — 한달살기 어디로 갈까", cluster: "Consider", score: 87, vol: "67K", fit: "한달살기 여행자" },
-  { t: "기후동행카드 외국인용 — 티머니 완전 정복", cluster: "Settle", score: 84, vol: "8.9K", fit: "외국인 유학생" },
-  { t: "이사 과도기 3주~2개월 단기임대 — 짐 보관·계약 팁", cluster: "Change", score: 82, vol: "9.8K", fit: "내국인 이사 과도기" },
-  { t: "외국인 인터넷은행 3사 비교 — 케이뱅크·토스·우리WON", cluster: "Settle", score: 78, vol: "14K", fit: "외국인 유학생" },
-  { t: "한국 노마드 월 생활비 — 서울·부산·제주 실제 후기", cluster: "Consider", score: 75, vol: "21K", fit: "디지털 노마드" },
-]
+interface DbIdea {
+  id: string
+  title: string
+  cluster: string | null
+  rationale: string | null
+  volume: number | null
+  fit_score: number | null
+  signal: { kind?: string; detail?: string } | null
+  related_keywords: string[] | null
+  status: string
+  created_at: string
+}
+
+function formatVolume(v: number | null): string {
+  if (v == null) return "—"
+  if (v >= 1000) return `${(v / 1000).toFixed(v >= 10000 ? 0 : 1)}K`
+  return String(v)
+}
+
+function isHotSignal(kind?: string): boolean {
+  return kind === "search-rising" || kind === "competitor-miss"
+}
 
 export default function IdeationPage() {
   const router = useRouter()
@@ -48,7 +61,21 @@ export default function IdeationPage() {
   )
   const [selectedPersona, setSelectedPersona] = useState("student")
   const [temperature, setTemperature] = useState(0.7)
+  const [count, setCount] = useState(30)
+  const [prompt, setPrompt] = useState(
+    "선택된 인풋과 페르소나를 바탕으로, 플라트라이프 게스트 여정 단계(Consider/Prepare/Arrive/Settle/Live/Explore/Change)별로 분산해 롱테일 단기임대 주제를 30개 생성해줘."
+  )
+
   const [generating, setGenerating] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [ideas, setIdeas] = useState<DbIdea[]>([])
+  const [error, setError] = useState<string | null>(null)
+  const [lastRunMeta, setLastRunMeta] = useState<{
+    count: number
+    provider: string
+    model: string
+    durationMs: number
+  } | null>(null)
 
   const toggle = (id: string) => {
     const n = new Set(selectedInputs)
@@ -57,9 +84,66 @@ export default function IdeationPage() {
     setSelectedInputs(n)
   }
 
-  const handleGenerate = () => {
+  // 최초 로드 — DB에서 기존 아이디어 가져오기
+  const loadIdeas = useCallback(async () => {
+    setLoading(true)
+    try {
+      const r = await fetch("/api/ideation/ideas?limit=50", { cache: "no-store" })
+      const j = await r.json()
+      if (j.ok) setIdeas(j.ideas as DbIdea[])
+      else setError(j.error ?? "불러오기 실패")
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "네트워크 오류")
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    loadIdeas()
+  }, [loadIdeas])
+
+  // 실제 AI 호출
+  const handleGenerate = async () => {
     setGenerating(true)
-    setTimeout(() => setGenerating(false), 1400)
+    setError(null)
+    try {
+      const persona = PERSONAS.find((p) => p.id === selectedPersona)
+      const researchContext = [
+        `선택된 인풋 소스: ${Array.from(selectedInputs)
+          .map((id) => INPUTS.find((x) => x.id === id)?.label)
+          .filter(Boolean)
+          .join(", ")}`,
+        `\n사용자 가이드:\n${prompt}`,
+      ].join("\n")
+
+      const r = await fetch("/api/ideation/run", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          personaSlug: selectedPersona,
+          personaLabel: persona?.label,
+          count,
+          temperature,
+          researchContext,
+        }),
+      })
+      const j = await r.json()
+      if (!j.ok) throw new Error(j.error ?? `status ${r.status}`)
+
+      setLastRunMeta({
+        count: j.result.count,
+        provider: j.result.provider,
+        model: j.result.model,
+        durationMs: j.result.durationMs,
+      })
+      // 갓 생성된 ideas를 맨 위로 + 기존 뒤에 유지
+      setIdeas((prev) => [...(j.result.ideas as DbIdea[]), ...prev])
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "생성 실패")
+    } finally {
+      setGenerating(false)
+    }
   }
 
   return (
@@ -70,6 +154,31 @@ export default function IdeationPage() {
         sub="수집된 인풋을 연결해 AI가 30~50개의 단기임대 토픽 아이디어를 확장 생성합니다. 게스트 여정 단계별 클러스터로 묶여 다음 단계 퍼널로 넘어갑니다."
         actions={[{ label: "주제선정으로 →", primary: true, onClick: () => router.push("/blog/topics") }]}
       />
+
+      {error && (
+        <div
+          style={{
+            marginBottom: 16,
+            padding: "10px 14px",
+            background: "var(--danger-bg)",
+            border: "1px solid var(--danger-border)",
+            color: "var(--danger-fg)",
+            borderRadius: "var(--r-md)",
+            fontSize: 13,
+            display: "flex",
+            gap: 8,
+            alignItems: "center",
+          }}
+        >
+          ⚠️ {error}
+          <button
+            onClick={() => setError(null)}
+            style={{ marginLeft: "auto", fontSize: 12, color: "var(--danger-fg)" }}
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       <div className="ideation-grid">
         {/* LEFT: Inputs panel */}
@@ -169,7 +278,9 @@ export default function IdeationPage() {
                     <div style={{ fontSize: 12.5, fontWeight: 500 }}>{p.label}</div>
                     <div style={{ fontSize: 10.5, color: "var(--text-muted)" }}>{p.desc}</div>
                   </div>
-                  <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{Math.round(p.match * 100)}%</span>
+                  <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                    {Math.round(p.match * 100)}%
+                  </span>
                 </label>
               ))}
             </div>
@@ -181,7 +292,7 @@ export default function IdeationPage() {
           <div className="bcard__header">
             <div className="bcard__title">AI 토픽 제너레이터</div>
             <span className="bchip" style={{ marginLeft: "auto" }}>
-              GPT-4 · Plott Blog Ideator
+              Gemini 1.5 Pro · Plott Blog Ideator
             </span>
           </div>
           <div style={{ padding: 20 }}>
@@ -197,7 +308,8 @@ export default function IdeationPage() {
               생성 지시문
             </label>
             <textarea
-              defaultValue="선택된 인풋과 페르소나를 바탕으로, 플라트라이프 게스트 여정 단계(Consider/Prepare/Arrive/Settle/Live/Explore/Change)별로 분산해 롱테일 단기임대 주제를 30개 생성해줘. 각 아이디어는 제목, 여정 클러스터, 타겟 페르소나, 예상 검색량, 플라트 매물 매칭도를 포함해야 해."
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
               style={{
                 width: "100%",
                 minHeight: 110,
@@ -241,6 +353,8 @@ export default function IdeationPage() {
                   생성 개수
                 </label>
                 <select
+                  value={count}
+                  onChange={(e) => setCount(parseInt(e.target.value, 10))}
                   style={{
                     width: "100%",
                     marginTop: 6,
@@ -250,9 +364,10 @@ export default function IdeationPage() {
                     background: "white",
                   }}
                 >
-                  <option>30개</option>
-                  <option>50개</option>
-                  <option>100개</option>
+                  <option value={10}>10개</option>
+                  <option value={20}>20개</option>
+                  <option value={30}>30개</option>
+                  <option value={50}>50개</option>
                 </select>
               </div>
             </div>
@@ -264,8 +379,25 @@ export default function IdeationPage() {
               disabled={generating}
             >
               <Icon name="sparkles" size={15} />
-              {generating ? "생성 중…" : "아이디어 생성"}
+              {generating ? "생성 중… (10~30초)" : "아이디어 생성"}
             </button>
+
+            {lastRunMeta && (
+              <div
+                style={{
+                  marginTop: 10,
+                  padding: "8px 10px",
+                  background: "var(--success-bg)",
+                  border: "1px solid var(--success-border)",
+                  borderRadius: "var(--r-md)",
+                  fontSize: 11.5,
+                  color: "var(--success-fg)",
+                }}
+              >
+                ✓ {lastRunMeta.count}개 생성 · {lastRunMeta.provider} · {lastRunMeta.model} ·{" "}
+                {(lastRunMeta.durationMs / 1000).toFixed(1)}s
+              </div>
+            )}
 
             <div
               style={{
@@ -280,8 +412,8 @@ export default function IdeationPage() {
                 💡 제안
               </div>
               <div style={{ fontSize: 12, color: "var(--text-secondary)", lineHeight: 1.5 }}>
-                인풋 소스 3개 이상 선택 시 클러스터 품질이 <b>+28%</b> 향상됩니다. 유학생 커뮤니티까지 함께
-                선택하면 <b>Arrive·Settle</b> 단계 주제 다양성이 좋아집니다.
+                인풋 소스 3개 이상 선택 시 클러스터 품질이 <b>+28%</b> 향상됩니다. 유학생 커뮤니티까지 함께 선택하면
+                <b> Arrive·Settle</b> 단계 주제 다양성이 좋아집니다.
               </div>
             </div>
           </div>
@@ -292,73 +424,119 @@ export default function IdeationPage() {
           <div className="bcard__header">
             <div>
               <div className="bcard__title">아이디어 스트림</div>
-              <div className="bcard__sub">{IDEAS.length}개 · 7개 여정 클러스터</div>
+              <div className="bcard__sub">
+                {loading ? "불러오는 중…" : `${ideas.length}개 · DB 저장 완료`}
+              </div>
             </div>
-            <button className="bbtn bbtn--ghost bbtn--sm" style={{ marginLeft: "auto" }}>
-              <Icon name="sort" size={12} /> 스코어순
+            <button
+              className="bbtn bbtn--ghost bbtn--sm"
+              style={{ marginLeft: "auto" }}
+              onClick={loadIdeas}
+              disabled={loading}
+            >
+              <Icon name="sort" size={12} /> 새로고침
             </button>
           </div>
           <div style={{ maxHeight: 560, overflowY: "auto" }}>
-            {IDEAS.map((i, idx) => (
+            {!loading && ideas.length === 0 && (
               <div
-                key={idx}
                 style={{
-                  padding: "12px 16px",
-                  borderBottom: "1px solid var(--border-subtle)",
-                  display: "flex",
-                  alignItems: "flex-start",
-                  gap: 10,
+                  padding: "28px 20px",
+                  textAlign: "center",
+                  fontSize: 12.5,
+                  color: "var(--text-muted)",
                 }}
               >
+                아직 아이디어가 없어요. 좌측에서 인풋 선택하고 <b>아이디어 생성</b>을 눌러보세요.
+              </div>
+            )}
+
+            {ideas.map((i) => {
+              const clusterLabel = i.cluster ? CLUSTER_LABEL[i.cluster] ?? i.cluster : "—"
+              const score = i.fit_score ?? 0
+              const hot = isHotSignal(i.signal?.kind)
+              const persona = "—" // 추후 PERSONAS 조인
+              return (
                 <div
+                  key={i.id}
                   style={{
-                    width: 32,
-                    height: 32,
-                    borderRadius: 8,
-                    background: `conic-gradient(var(--brand-500) ${i.score * 3.6}deg, var(--bg-muted) 0)`,
-                    display: "grid",
-                    placeItems: "center",
-                    flexShrink: 0,
-                    position: "relative",
+                    padding: "12px 16px",
+                    borderBottom: "1px solid var(--border-subtle)",
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: 10,
                   }}
                 >
                   <div
                     style={{
-                      position: "absolute",
-                      inset: 2,
-                      background: "white",
-                      borderRadius: 6,
+                      width: 32,
+                      height: 32,
+                      borderRadius: 8,
+                      background: `conic-gradient(var(--brand-500) ${score * 3.6}deg, var(--bg-muted) 0)`,
                       display: "grid",
                       placeItems: "center",
-                      fontSize: 10,
-                      fontWeight: 700,
+                      flexShrink: 0,
+                      position: "relative",
                     }}
+                    title={i.signal?.detail ?? ""}
                   >
-                    {i.score}
+                    <div
+                      style={{
+                        position: "absolute",
+                        inset: 2,
+                        background: "white",
+                        borderRadius: 6,
+                        display: "grid",
+                        placeItems: "center",
+                        fontSize: 10,
+                        fontWeight: 700,
+                      }}
+                    >
+                      {score}
+                    </div>
                   </div>
-                </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, lineHeight: 1.35, marginBottom: 4 }}>
-                    {i.hot && (
-                      <span style={{ marginRight: 6, fontSize: 10, fontWeight: 700, color: "var(--accent-rose)" }}>
-                        🔥
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, lineHeight: 1.35, marginBottom: 4 }}>
+                      {hot && (
+                        <span
+                          style={{
+                            marginRight: 6,
+                            fontSize: 10,
+                            fontWeight: 700,
+                            color: "var(--accent-rose)",
+                          }}
+                        >
+                          🔥
+                        </span>
+                      )}
+                      {i.title}
+                    </div>
+                    <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                      <span className="bchip">#{clusterLabel}</span>
+                      <span className="bchip bchip--info">{formatVolume(i.volume)}</span>
+                      <span className="bchip" style={{ color: "var(--text-muted)" }}>
+                        {persona}
                       </span>
+                    </div>
+                    {i.rationale && (
+                      <div
+                        style={{
+                          marginTop: 4,
+                          fontSize: 11,
+                          color: "var(--text-muted)",
+                          lineHeight: 1.4,
+                        }}
+                      >
+                        {i.rationale}
+                      </div>
                     )}
-                    {i.t}
                   </div>
-                  <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-                    <span className="bchip">#{i.cluster}</span>
-                    <span className="bchip bchip--info">{i.vol}</span>
-                    <span className="bchip" style={{ color: "var(--text-muted)" }}>
-                      {i.fit}
-                    </span>
-                  </div>
+                  <button className="bbtn bbtn--ghost bbtn--sm" style={{ padding: "4px 6px" }}>
+                    <Icon name="bookmark" size={12} />
+                  </button>
                 </div>
-                <button className="bbtn bbtn--ghost bbtn--sm" style={{ padding: "4px 6px" }}>
-                  <Icon name="bookmark" size={12} />
-                </button>
-              </div>
-            ))}
+              )
+            })}
           </div>
           <div
             style={{
@@ -375,6 +553,7 @@ export default function IdeationPage() {
               className="bbtn bbtn--primary"
               style={{ flex: 2 }}
               onClick={() => router.push("/blog/topics")}
+              disabled={ideas.length === 0}
             >
               퍼널로 넘기기 <Icon name="chevron" size={12} />
             </button>
