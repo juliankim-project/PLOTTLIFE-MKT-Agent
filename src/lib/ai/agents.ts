@@ -20,6 +20,19 @@ export interface AgentRecord {
   color: string | null
 }
 
+/** JSON 본문 추출 — 코드블록/공백 제거 + 첫 { ~ 마지막 } 슬라이스 */
+function extractJson(raw: string): string | null {
+  if (!raw) return null
+  let s = raw.trim()
+  // 코드블록 제거
+  s = s.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "").trim()
+  // JSON 이외의 prefix 가 있으면 잘라냄
+  const firstBrace = s.indexOf("{")
+  if (firstBrace < 0) return null
+  s = s.slice(firstBrace)
+  return s
+}
+
 export async function getAgent(slug: string): Promise<AgentRecord> {
   const db = supabaseAdmin()
   const { data, error } = await db.from("agents").select("*").eq("slug", slug).single()
@@ -104,10 +117,21 @@ export async function runAgent(input: RunAgentInput): Promise<RunAgentResult> {
     const durationMs = Date.now() - started
     let parsedJson: unknown = undefined
     if (input.json) {
-      try {
-        parsedJson = JSON.parse(out.text)
-      } catch {
-        // leave undefined; caller can choose to re-prompt
+      const cleaned = extractJson(out.text)
+      if (cleaned) {
+        try {
+          parsedJson = JSON.parse(cleaned)
+        } catch {
+          // 마지막 시도 — 잘린 JSON이면 마지막 완전한 } 까지만
+          const lastClose = cleaned.lastIndexOf("}")
+          if (lastClose > 0) {
+            try {
+              parsedJson = JSON.parse(cleaned.slice(0, lastClose + 1))
+            } catch {
+              // give up
+            }
+          }
+        }
       }
     }
 

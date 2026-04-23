@@ -1,425 +1,572 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
-import { Icon, PageHeader, MiniStat } from "../_ui"
+import { Icon, PageHeader } from "../_ui"
 
-interface Candidate {
-  id: number
-  t: string
-  cluster: string
-  vol: number
-  comp: number
-  seasonality: number
-  persona: number
-  brand: number
+const CLUSTER_LABEL: Record<string, string> = {
+  consider: "Consider", prepare: "Prepare", arrive: "Arrive", settle: "Settle",
+  live: "Live", explore: "Explore", change: "Change",
 }
 
-const CANDIDATES: Candidate[] = [
-  { id: 1,  t: "보증금 0원 단기임대 추천 TOP 10 — 서울 전 지역", cluster: "Prepare",  vol: 34200, comp: 28, seasonality: 62, persona: 94, brand: 96 },
-  { id: 2,  t: "외국인등록증(ARC) 3주 완성 가이드",              cluster: "Settle",   vol: 18200, comp: 18, seasonality: 48, persona: 92, brand: 88 },
-  { id: 3,  t: "서울 vs 부산 vs 제주 — 한달살기 어디로 갈까",       cluster: "Consider", vol: 67100, comp: 58, seasonality: 84, persona: 78, brand: 72 },
-  { id: 4,  t: "성수동 단기임대 완벽 가이드 — 노마드 핫플 2026",    cluster: "Explore",  vol: 12400, comp: 32, seasonality: 70, persona: 88, brand: 82 },
-  { id: 5,  t: "기후동행카드 외국인용 — 티머니 완전 정복",         cluster: "Settle",   vol:  8900, comp: 14, seasonality: 52, persona: 86, brand: 64 },
-  { id: 6,  t: "이사 과도기 3주~2개월 단기임대 — 짐 보관·계약 팁", cluster: "Change",   vol:  9800, comp: 22, seasonality: 58, persona: 72, brand: 84 },
-  { id: 7,  t: "외국인 인터넷은행 3사 비교 — 케이뱅크·토스·우리WON", cluster: "Settle",  vol: 14200, comp: 34, seasonality: 45, persona: 88, brand: 62 },
-  { id: 8,  t: "한국 노마드 월 생활비 — 서울·부산·제주 실제 후기",   cluster: "Consider", vol: 21500, comp: 44, seasonality: 60, persona: 80, brand: 70 },
-  { id: 9,  t: "연세대·이대 유학생 추천 방 — 신촌 시세 비교",        cluster: "Explore",  vol: 11300, comp: 38, seasonality: 74, persona: 90, brand: 92 },
-  { id: 10, t: "건국대 외국인 유학생 방 추천 — 화양동 핫스팟",       cluster: "Explore",  vol:  7800, comp: 24, seasonality: 70, persona: 92, brand: 94 },
-  { id: 11, t: "D-2 유학 비자 완벽 가이드 — 신청부터 입국까지",      cluster: "Prepare",  vol: 15200, comp: 48, seasonality: 88, persona: 82, brand: 52 },
-  { id: 12, t: "제주 한달살기 — 봄 시즌 워케이션 매물 가이드",        cluster: "Explore",  vol: 22700, comp: 52, seasonality: 95, persona: 76, brand: 86 },
-]
-
-type Weights = {
-  vol: number
-  comp: number
-  seasonality: number
-  persona: number
-  brand: number
+interface ShortlistedIdea {
+  id: string
+  title: string
+  cluster: string | null
+  rationale: string | null
+  volume: number | null
+  fit_score: number | null
+  signal: { kind?: string; detail?: string } | null
+  related_keywords: string[] | null
+  status: string
+  created_at: string
 }
 
-type StageKey = "pool" | "10" | "5" | "3"
+interface OutlineSection {
+  heading: string
+  level: 2 | 3
+  bullets?: string[]
+  est_words?: number
+}
 
-export default function TopicFunnelPage() {
-  const router = useRouter()
-  const [weights, setWeights] = useState<Weights>({ vol: 22, comp: 18, seasonality: 15, persona: 22, brand: 23 })
-  const [stage, setStage] = useState<StageKey>("pool")
-  const [clusters, setClusters] = useState<Set<string>>(new Set())
+interface TopicBrief {
+  id: string
+  idea_id: string
+  title: string
+  slug: string
+  primary_keyword: string
+  secondary_keywords: string[]
+  target_kpi: "conversion" | "traffic" | "dwell_time"
+  tone_guide: string | null
+  outline: OutlineSection[]
+  cta_hints: string[]
+  brief: string | null
+  status: string
+}
 
-  const scored = useMemo(() => {
-    const wSum = Object.values(weights).reduce((a, b) => a + b, 0) || 1
-    return CANDIDATES.map((c) => {
-      const score =
-        (weights.vol * (Math.log10(c.vol + 1) / 5) * 100 +
-          weights.comp * (100 - c.comp) +
-          weights.seasonality * c.seasonality +
-          weights.persona * c.persona +
-          weights.brand * c.brand) /
-        wSum
-      return { ...c, score: Math.round(score) }
-    }).sort((a, b) => b.score - a.score)
-  }, [weights])
-
-  const filtered = useMemo(
-    () => (clusters.size === 0 ? scored : scored.filter((s) => clusters.has(s.cluster))),
-    [scored, clusters]
-  )
-
-  const currentLimit = stage === "pool" ? filtered.length : parseInt(stage, 10)
-  const visible = filtered.slice(0, currentLimit)
-
-  const toggleCluster = (c: string) => {
-    const n = new Set(clusters)
-    if (n.has(c)) n.delete(c)
-    else n.add(c)
-    setClusters(n)
+async function safeFetchJson<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
+  const r = await fetch(input, init)
+  const text = await r.text()
+  try {
+    return JSON.parse(text) as T
+  } catch {
+    throw new Error(r.ok ? "응답 파싱 실패" : `HTTP ${r.status}`)
   }
-  const setWeight = (k: keyof Weights, v: string) =>
-    setWeights((w) => ({ ...w, [k]: parseInt(v, 10) }))
+}
 
-  const allClusters = [...new Set(CANDIDATES.map((c) => c.cluster))]
+const KPI_LABEL: Record<string, { icon: string; label: string; color: string }> = {
+  conversion: { icon: "💰", label: "예약 전환", color: "#10B981" },
+  traffic: { icon: "📈", label: "오가닉 트래픽", color: "#3B82F6" },
+  dwell_time: { icon: "📖", label: "체류 / 브랜드", color: "#8B5CF6" },
+}
+
+export default function TopicsPage() {
+  const router = useRouter()
+  const [shortlist, setShortlist] = useState<ShortlistedIdea[]>([])
+  const [loading, setLoading] = useState(true)
+  const [selectedIdeaId, setSelectedIdeaId] = useState<string | null>(null)
+  const [brief, setBrief] = useState<TopicBrief | null>(null)
+  const [generating, setGenerating] = useState(false)
+  const [approving, setApproving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const loadShortlist = useCallback(async () => {
+    setLoading(true)
+    try {
+      const j = await safeFetchJson<{ ok: boolean; ideas?: ShortlistedIdea[] }>(
+        "/api/ideation/ideas?status=shortlisted&limit=50",
+        { cache: "no-store" }
+      )
+      if (!j.ok) throw new Error("불러오기 실패")
+      const list = (j.ideas ?? []).sort((a, b) => (b.fit_score ?? 0) - (a.fit_score ?? 0))
+      setShortlist(list)
+      if (list.length > 0 && !selectedIdeaId) setSelectedIdeaId(list[0].id)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "오류")
+    } finally {
+      setLoading(false)
+    }
+  }, [selectedIdeaId])
+
+  useEffect(() => {
+    loadShortlist()
+  }, [loadShortlist])
+
+  const sortedShortlist = useMemo(() => shortlist, [shortlist])
+
+  const generateBrief = async () => {
+    if (!selectedIdeaId) return
+    setGenerating(true)
+    setError(null)
+    setBrief(null)
+    try {
+      const j = await safeFetchJson<{ ok: boolean; result?: { topic: TopicBrief; reused: boolean }; error?: string }>(
+        "/api/topics/brief",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ ideaId: selectedIdeaId }),
+        }
+      )
+      if (!j.ok || !j.result) throw new Error(j.error ?? "브리프 생성 실패")
+      setBrief(j.result.topic)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "브리프 생성 실패")
+    } finally {
+      setGenerating(false)
+    }
+  }
+
+  const approveAndGoToWrite = async () => {
+    if (!brief) return
+    setApproving(true)
+    try {
+      // 상태 approved 로
+      await fetch(`/api/topics/${brief.id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ status: "approved" }),
+      })
+      router.push(`/blog/write/${brief.id}`)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "확정 실패")
+      setApproving(false)
+    }
+  }
+
+  const selectedIdea = sortedShortlist.find((i) => i.id === selectedIdeaId) ?? null
 
   return (
     <div className="bpage fade-up">
       <PageHeader
         eyebrow="STAGE 03 · TOPIC SELECTION"
-        title="주제선정 퍼널"
-        sub="스코어링으로 12개 후보를 10→5→3개로 압축합니다. 좌측의 가중치를 조정하면 순위가 실시간으로 바뀝니다. 브랜드 적합도는 플라트 매물 매칭도입니다."
-        actions={[{ label: "작성 단계로 →", primary: true, onClick: () => router.push("/blog/write") }]}
+        title="주제선정 + 브리프"
+        sub="아이데이션에서 shortlist 된 후보 중 이번 라운드에 작성할 주제 1개를 확정하고, Content Strategist 가 상세 브리프를 만듭니다. 브리프가 다음 단계 Copywriter 의 입력이 됩니다."
       />
 
-      <div className="funnel-grid">
-        {/* LEFT: Weights & filters */}
+      {error && (
+        <div
+          style={{
+            marginBottom: 16,
+            padding: "10px 14px",
+            background: "var(--danger-bg)",
+            border: "1px solid var(--danger-border)",
+            color: "var(--danger-fg)",
+            borderRadius: "var(--r-md)",
+            fontSize: 13,
+            display: "flex",
+            gap: 8,
+          }}
+        >
+          ⚠️ <span style={{ flex: 1 }}>{error}</span>
+          <button onClick={() => setError(null)} style={{ color: "var(--danger-fg)" }}>✕</button>
+        </div>
+      )}
+
+      <div className="topics-grid">
+        {/* LEFT: shortlist 후보 라디오 */}
         <div className="bcard">
           <div className="bcard__header">
-            <div className="bcard__title">스코어링 가중치</div>
-            <span className="bchip bchip--brand" style={{ marginLeft: "auto" }}>실시간</span>
-          </div>
-          <div style={{ padding: 18 }}>
-            {(
-              [
-                { k: "vol", label: "검색량", icon: "trend" as const, color: "var(--brand-500)" },
-                { k: "comp", label: "경쟁도 (역)", icon: "filter" as const, color: "var(--accent-emerald)" },
-                { k: "seasonality", label: "계절성·타이밍", icon: "calendar" as const, color: "var(--accent-amber)" },
-                { k: "persona", label: "페르소나 매칭", icon: "users" as const, color: "var(--accent-cyan)" },
-                { k: "brand", label: "플라트 매물 매칭", icon: "target" as const, color: "var(--accent-violet)" },
-              ] as const
-            ).map((s) => (
-              <div key={s.k} style={{ marginBottom: 14 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                  <div
-                    style={{
-                      width: 22,
-                      height: 22,
-                      borderRadius: 6,
-                      background: `${s.color}22`,
-                      color: s.color,
-                      display: "grid",
-                      placeItems: "center",
-                    }}
-                  >
-                    <Icon name={s.icon} size={12} />
-                  </div>
-                  <span style={{ fontSize: 12.5, fontWeight: 600 }}>{s.label}</span>
-                  <span
-                    className="text-mono"
-                    style={{ marginLeft: "auto", fontSize: 12, fontWeight: 700, color: s.color }}
-                  >
-                    {weights[s.k]}%
-                  </span>
-                </div>
-                <input
-                  type="range"
-                  min="0"
-                  max="50"
-                  value={weights[s.k]}
-                  onChange={(e) => setWeight(s.k, e.target.value)}
-                  style={{ width: "100%", accentColor: s.color }}
-                />
+            <div>
+              <div className="bcard__title">Shortlisted 후보</div>
+              <div className="bcard__sub">
+                {loading ? "불러오는 중…" : `${sortedShortlist.length}개 · 점수순`}
               </div>
-            ))}
+            </div>
             <button
-              className="bbtn bbtn--subtle bbtn--sm"
-              style={{ width: "100%", marginTop: 4 }}
-              onClick={() => setWeights({ vol: 22, comp: 18, seasonality: 15, persona: 22, brand: 23 })}
+              className="bbtn bbtn--ghost bbtn--sm"
+              style={{ marginLeft: "auto" }}
+              onClick={loadShortlist}
             >
-              기본값으로 초기화
+              <Icon name="sort" size={12} /> 새로고침
             </button>
           </div>
+          <div style={{ maxHeight: 640, overflowY: "auto" }}>
+            {!loading && sortedShortlist.length === 0 && (
+              <div style={{ padding: "40px 24px", textAlign: "center", fontSize: 13, color: "var(--text-muted)", lineHeight: 1.6 }}>
+                <div style={{ fontSize: 28, marginBottom: 8, opacity: 0.5 }}>📋</div>
+                Shortlist 된 후보가 없어요.
+                <br />
+                먼저{" "}
+                <a href="/blog/ideation" style={{ color: "var(--brand-600)", fontWeight: 600 }}>
+                  아이데이션
+                </a>
+                에서 체크하고 퍼널로 넘겨주세요.
+              </div>
+            )}
 
-          <div style={{ padding: "14px 18px", borderTop: "1px solid var(--border-subtle)" }}>
-            <div
-              style={{
-                fontSize: 11,
-                color: "var(--text-muted)",
-                fontWeight: 600,
-                textTransform: "uppercase",
-                letterSpacing: ".04em",
-                marginBottom: 8,
-              }}
-            >
-              여정 클러스터 필터
-            </div>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-              {allClusters.map((c) => {
-                const on = clusters.has(c)
-                return (
-                  <button
-                    key={c}
-                    onClick={() => toggleCluster(c)}
-                    className={`bchip ${on ? "bchip--brand" : ""}`}
+            {sortedShortlist.map((i) => {
+              const selected = selectedIdeaId === i.id
+              const score = i.fit_score ?? 0
+              return (
+                <label
+                  key={i.id}
+                  style={{
+                    display: "flex",
+                    gap: 10,
+                    padding: "12px 16px",
+                    borderBottom: "1px solid var(--border-subtle)",
+                    cursor: "pointer",
+                    background: selected ? "var(--brand-50)" : "transparent",
+                    alignItems: "flex-start",
+                  }}
+                >
+                  <input
+                    type="radio"
+                    name="idea"
+                    checked={selected}
+                    onChange={() => {
+                      setSelectedIdeaId(i.id)
+                      setBrief(null)
+                    }}
+                    style={{ marginTop: 6 }}
+                  />
+                  <div
                     style={{
-                      cursor: "pointer",
-                      border: on ? "1px solid var(--brand-400)" : undefined,
+                      width: 32,
+                      height: 32,
+                      borderRadius: 8,
+                      background: `conic-gradient(var(--brand-500) ${score * 3.6}deg, var(--bg-muted) 0)`,
+                      display: "grid",
+                      placeItems: "center",
+                      flexShrink: 0,
+                      position: "relative",
                     }}
                   >
-                    #{c}
-                  </button>
-                )
-              })}
-            </div>
+                    <div
+                      style={{
+                        position: "absolute",
+                        inset: 2,
+                        background: "white",
+                        borderRadius: 6,
+                        display: "grid",
+                        placeItems: "center",
+                        fontSize: 10,
+                        fontWeight: 700,
+                      }}
+                    >
+                      {score}
+                    </div>
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, lineHeight: 1.35, marginBottom: 4 }}>
+                      {i.title}
+                    </div>
+                    <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 4 }}>
+                      <span className="bchip">#{i.cluster ? CLUSTER_LABEL[i.cluster] ?? i.cluster : "—"}</span>
+                      {i.volume && (
+                        <span className="bchip bchip--info">
+                          {i.volume >= 1000 ? `${(i.volume / 1000).toFixed(0)}K` : i.volume}
+                        </span>
+                      )}
+                    </div>
+                    {i.rationale && (
+                      <div style={{ fontSize: 11, color: "var(--text-muted)", lineHeight: 1.4 }}>
+                        {i.rationale}
+                      </div>
+                    )}
+                  </div>
+                </label>
+              )
+            })}
           </div>
         </div>
 
-        {/* CENTER: Funnel */}
+        {/* CENTER: 선택 요약 + 브리프 생성 */}
         <div className="bcard">
           <div className="bcard__header">
-            <div className="bcard__title">압축 퍼널</div>
-            <div style={{ marginLeft: "auto", display: "flex", gap: 4 }}>
-              {(
-                [
-                  { k: "pool" as const, l: `Pool ${scored.length}` },
-                  { k: "10" as const, l: "Top 10" },
-                  { k: "5" as const, l: "Top 5" },
-                  { k: "3" as const, l: "Final 3" },
-                ] as const
-              ).map((b) => (
-                <button
-                  key={b.k}
-                  onClick={() => setStage(b.k)}
-                  className={`bbtn ${stage === b.k ? "bbtn--primary" : "bbtn--ghost"} bbtn--sm`}
-                >
-                  {b.l}
-                </button>
-              ))}
+            <div>
+              <div className="bcard__title">브리프</div>
+              <div className="bcard__sub">
+                {brief ? "Content Strategist 가 작성한 상세 브리프" : "라디오로 1개 선택 후 생성"}
+              </div>
             </div>
+            {brief && (
+              <span className="bchip bchip--success" style={{ marginLeft: "auto" }}>
+                <span className="bchip__dot" /> 준비 완료
+              </span>
+            )}
           </div>
 
-          <div style={{ padding: "20px 22px 8px" }}>
-            <svg viewBox="0 0 600 200" style={{ width: "100%", height: 150 }}>
-              <defs>
-                <linearGradient id="funnelGrad" x1="0" x2="0" y1="0" y2="1">
-                  <stop offset="0%" stopColor="var(--brand-300)" />
-                  <stop offset="100%" stopColor="var(--accent-violet)" />
-                </linearGradient>
-              </defs>
-              <path d="M20 20 L580 20 L420 180 L180 180 Z" fill="url(#funnelGrad)" opacity="0.12" />
-              <path
-                d="M20 20 L580 20 L420 180 L180 180 Z"
-                fill="none"
-                stroke="var(--brand-400)"
-                strokeWidth="1.5"
-              />
-              {[
-                { y: 60, label: "Top 10", count: Math.min(10, scored.length), left: 82, right: 518 },
-                { y: 110, label: "Top 5", count: 5, left: 145, right: 455 },
-                { y: 160, label: "Top 3", count: 3, left: 208, right: 392 },
-              ].map((l) => (
-                <g key={l.label}>
-                  <line
-                    x1={l.left}
-                    y1={l.y}
-                    x2={l.right}
-                    y2={l.y}
-                    stroke="var(--brand-500)"
-                    strokeDasharray="4 4"
-                    strokeWidth="1"
-                  />
-                  <text
-                    x="300"
-                    y={l.y - 6}
-                    textAnchor="middle"
-                    fontSize="11"
-                    fill="var(--brand-700)"
-                    fontWeight="600"
-                  >
-                    {l.label} · {l.count}건
-                  </text>
-                </g>
-              ))}
-              <text x="300" y="14" textAnchor="middle" fontSize="10.5" fill="var(--text-muted)" fontWeight="600">
-                후보 Pool · {scored.length}건
-              </text>
-              <text
-                x="300"
-                y="196"
-                textAnchor="middle"
-                fontSize="10.5"
-                fill="var(--text-muted)"
-                fontWeight="600"
+          <div style={{ padding: 20 }}>
+            {/* 선택된 idea 요약 */}
+            {selectedIdea && (
+              <div
+                style={{
+                  padding: 14,
+                  background: "var(--bg-subtle)",
+                  border: "1px solid var(--border-subtle)",
+                  borderRadius: "var(--r-md)",
+                  marginBottom: 16,
+                }}
               >
-                작성 큐로 →
-              </text>
-            </svg>
-          </div>
+                <div style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600, marginBottom: 6 }}>
+                  선택된 아이디어
+                </div>
+                <div style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.4 }}>{selectedIdea.title}</div>
+                <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 6 }}>
+                  <span className="bchip">
+                    #{selectedIdea.cluster ? CLUSTER_LABEL[selectedIdea.cluster] ?? selectedIdea.cluster : "—"}
+                  </span>
+                  {selectedIdea.fit_score != null && (
+                    <span className="bchip bchip--brand">fit {selectedIdea.fit_score}</span>
+                  )}
+                </div>
+              </div>
+            )}
 
-          <div style={{ padding: "8px 18px 16px", maxHeight: 420, overflowY: "auto" }}>
-            {visible.map((c, idx) => {
-              const rank = idx + 1
-              const advanced = rank <= 3 ? "final" : rank <= 5 ? "top5" : rank <= 10 ? "top10" : null
-              return (
-                <div key={c.id} className="topic-row">
-                  <div className="topic-row__rank">
-                    <span className="text-mono" style={{ fontWeight: 700 }}>#{rank}</span>
-                    {advanced && (
-                      <span className={`topic-row__badge topic-row__badge--${advanced}`}>
-                        {advanced === "final" ? "FINAL" : advanced === "top5" ? "TOP 5" : "TOP 10"}
+            {/* 브리프 생성 버튼 */}
+            {!brief && (
+              <button
+                className="bbtn bbtn--primary bbtn--lg"
+                style={{ width: "100%" }}
+                onClick={generateBrief}
+                disabled={!selectedIdeaId || generating}
+              >
+                {generating ? (
+                  <>
+                    <Spinner /> <span style={{ marginLeft: 6 }}>Content Strategist 가 브리프 작성 중…</span>
+                  </>
+                ) : (
+                  <>
+                    <Icon name="sparkles" size={15} /> 브리프 생성
+                  </>
+                )}
+              </button>
+            )}
+
+            {/* 브리프 표시 */}
+            {brief && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                {/* 제목·슬러그·KPI */}
+                <div>
+                  <div style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600, marginBottom: 6 }}>
+                    확정 제목
+                  </div>
+                  <div style={{ fontSize: 18, fontWeight: 700, lineHeight: 1.35, letterSpacing: "-.01em" }}>
+                    {brief.title}
+                  </div>
+                  <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>/{brief.slug}</div>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10 }}>
+                  <BriefField
+                    label="타겟 KPI"
+                    value={
+                      <span
+                        className="bchip"
+                        style={{
+                          background: (KPI_LABEL[brief.target_kpi]?.color ?? "#999") + "22",
+                          color: KPI_LABEL[brief.target_kpi]?.color,
+                        }}
+                      >
+                        {KPI_LABEL[brief.target_kpi]?.icon} {KPI_LABEL[brief.target_kpi]?.label}
                       </span>
-                    )}
+                    }
+                  />
+                  <BriefField label="예상 길이" value={brief.brief ?? "—"} />
+                </div>
+
+                {/* 키워드 */}
+                <BriefField
+                  label="Primary keyword"
+                  value={
+                    <span className="bchip bchip--brand" style={{ fontSize: 12 }}>
+                      {brief.primary_keyword}
+                    </span>
+                  }
+                />
+                {brief.secondary_keywords.length > 0 && (
+                  <BriefField
+                    label="Secondary keywords"
+                    value={
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                        {brief.secondary_keywords.map((k) => (
+                          <span key={k} className="bchip" style={{ fontSize: 11 }}>
+                            {k}
+                          </span>
+                        ))}
+                      </div>
+                    }
+                  />
+                )}
+
+                {/* 톤 가이드 */}
+                {brief.tone_guide && (
+                  <BriefField label="톤 가이드" value={<span style={{ lineHeight: 1.5 }}>{brief.tone_guide}</span>} />
+                )}
+
+                {/* 아웃라인 */}
+                <div>
+                  <div
+                    style={{
+                      fontSize: 11,
+                      color: "var(--text-muted)",
+                      fontWeight: 600,
+                      textTransform: "uppercase",
+                      letterSpacing: ".04em",
+                      marginBottom: 8,
+                    }}
+                  >
+                    아웃라인 ({brief.outline.length}개 섹션)
                   </div>
-                  <div className="topic-row__body">
-                    <div className="topic-row__title">{c.t}</div>
-                    <div className="topic-row__sub">
-                      <span>#{c.cluster}</span>
-                      <span>· {(c.vol / 1000).toFixed(1)}K/월</span>
-                      <span>· 경쟁도 {c.comp}</span>
-                      <span>· 플라트 매칭 {c.brand}</span>
-                    </div>
-                  </div>
-                  <div className="topic-row__score">
-                    <div
-                      className="topic-row__score-ring"
-                      style={{
-                        background: `conic-gradient(
-                          ${
-                            c.score >= 80
-                              ? "var(--accent-emerald)"
-                              : c.score >= 65
-                              ? "var(--brand-500)"
-                              : "var(--accent-amber)"
-                          } ${c.score * 3.6}deg,
-                          var(--bg-muted) 0)`,
-                      }}
-                    >
-                      <div className="topic-row__score-inner">{c.score}</div>
-                    </div>
+                  <div
+                    style={{
+                      border: "1px solid var(--border-subtle)",
+                      borderRadius: "var(--r-md)",
+                      background: "var(--bg-subtle)",
+                    }}
+                  >
+                    {brief.outline.map((o, i) => (
+                      <div
+                        key={i}
+                        style={{
+                          padding: "10px 14px",
+                          borderBottom:
+                            i < brief.outline.length - 1 ? "1px solid var(--border-subtle)" : "none",
+                          paddingLeft: o.level === 3 ? 32 : 14,
+                        }}
+                      >
+                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <span
+                            className="text-mono"
+                            style={{
+                              fontSize: 10,
+                              color: "var(--brand-600)",
+                              fontWeight: 700,
+                              background: "var(--brand-50)",
+                              padding: "1px 5px",
+                              borderRadius: 3,
+                            }}
+                          >
+                            H{o.level}
+                          </span>
+                          <span style={{ fontSize: 13, fontWeight: 600, flex: 1 }}>{o.heading}</span>
+                          {o.est_words && (
+                            <span style={{ fontSize: 10, color: "var(--text-muted)" }}>~{o.est_words}자</span>
+                          )}
+                        </div>
+                        {o.bullets && o.bullets.length > 0 && (
+                          <ul
+                            style={{
+                              margin: "6px 0 0",
+                              paddingLeft: 16,
+                              fontSize: 11.5,
+                              color: "var(--text-secondary)",
+                              lineHeight: 1.55,
+                            }}
+                          >
+                            {o.bullets.map((b, j) => (
+                              <li key={j}>{b}</li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    ))}
                   </div>
                 </div>
-              )
-            })}
-            {visible.length === 0 && (
-              <div style={{ padding: 40, textAlign: "center", color: "var(--text-muted)", fontSize: 13 }}>
-                선택된 클러스터에 해당하는 후보가 없습니다.
+
+                {/* CTA */}
+                {brief.cta_hints.length > 0 && (
+                  <BriefField
+                    label="마무리 CTA"
+                    value={
+                      <ul style={{ margin: 0, paddingLeft: 16, fontSize: 12.5, lineHeight: 1.5 }}>
+                        {brief.cta_hints.map((c, i) => (
+                          <li key={i}>{c}</li>
+                        ))}
+                      </ul>
+                    }
+                  />
+                )}
               </div>
             )}
           </div>
-        </div>
 
-        {/* RIGHT: Final 3 brief */}
-        <div className="bcard">
-          <div className="bcard__header">
-            <div className="bcard__title">최종 선정 · 브리프</div>
-            <span className="bchip bchip--success" style={{ marginLeft: "auto" }}>3건 확정</span>
-          </div>
-          <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
-            {scored.slice(0, 3).map((c, i) => (
-              <div
-                key={c.id}
-                style={{
-                  padding: 14,
-                  border: "1px solid var(--border-default)",
-                  borderRadius: "var(--r-md)",
-                  background: "linear-gradient(180deg, var(--brand-50), white)",
-                }}
-              >
-                <div style={{ display: "flex", alignItems: "flex-start", gap: 8, marginBottom: 8 }}>
-                  <div
-                    style={{
-                      width: 24,
-                      height: 24,
-                      borderRadius: 6,
-                      background: "var(--brand-600)",
-                      color: "white",
-                      display: "grid",
-                      placeItems: "center",
-                      fontSize: 11,
-                      fontWeight: 700,
-                      flexShrink: 0,
-                    }}
-                  >
-                    {i + 1}
-                  </div>
-                  <div style={{ fontSize: 13, fontWeight: 600, lineHeight: 1.35 }}>{c.t}</div>
-                </div>
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "repeat(3, 1fr)",
-                    gap: 6,
-                    marginBottom: 10,
-                  }}
-                >
-                  <MiniStat label="스코어" value={c.score} accent />
-                  <MiniStat label="검색량" value={`${(c.vol / 1000).toFixed(0)}K`} />
-                  <MiniStat label="경쟁도" value={c.comp} />
-                </div>
-                <div style={{ display: "flex", gap: 4, marginBottom: 10, flexWrap: "wrap" }}>
-                  <span className="bchip">#{c.cluster}</span>
-                  <span className="bchip bchip--info">롱폼 가이드</span>
-                </div>
-                <button className="bbtn bbtn--subtle bbtn--sm" style={{ width: "100%" }}>
-                  브리프 자동 생성 <Icon name="sparkles" size={11} />
-                </button>
-              </div>
-            ))}
-            <button
-              className="bbtn bbtn--primary"
-              style={{ marginTop: 4 }}
-              onClick={() => router.push("/blog/write")}
+          {brief && (
+            <div
+              style={{
+                padding: "14px 20px",
+                borderTop: "1px solid var(--border-subtle)",
+                display: "flex",
+                gap: 8,
+              }}
             >
-              3건 모두 작성 단계로 <Icon name="chevron" size={12} />
-            </button>
-          </div>
+              <button
+                className="bbtn bbtn--subtle"
+                style={{ flex: 1 }}
+                onClick={() => {
+                  setBrief(null)
+                }}
+                disabled={approving}
+              >
+                다시 만들기
+              </button>
+              <button
+                className="bbtn bbtn--primary"
+                style={{ flex: 2 }}
+                onClick={approveAndGoToWrite}
+                disabled={approving}
+              >
+                {approving ? (
+                  <>
+                    <Spinner /> <span style={{ marginLeft: 6 }}>확정 중…</span>
+                  </>
+                ) : (
+                  <>
+                    확정하고 작성 단계로 <Icon name="chevron" size={12} />
+                  </>
+                )}
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
       <style>{`
-        .blog-shell .funnel-grid {
+        .blog-shell .topics-grid {
           display: grid;
-          grid-template-columns: 260px 1fr 360px;
+          grid-template-columns: 380px 1fr;
           gap: 14px;
           align-items: start;
         }
         @media (max-width: 1180px) {
-          .blog-shell .funnel-grid { grid-template-columns: 1fr; }
+          .blog-shell .topics-grid { grid-template-columns: 1fr; }
         }
-        .blog-shell .topic-row {
-          display: flex; align-items: center; gap: 12px;
-          padding: 10px 4px;
-          border-bottom: 1px solid var(--border-subtle);
-        }
-        .blog-shell .topic-row:last-child { border-bottom: 0; }
-        .blog-shell .topic-row__rank { width: 64px; display: flex; flex-direction: column; gap: 2px; align-items: flex-start; }
-        .blog-shell .topic-row__badge {
-          font-size: 9px; font-weight: 800; letter-spacing: .06em;
-          padding: 1px 5px; border-radius: 3px;
-        }
-        .blog-shell .topic-row__badge--final { background: var(--accent-emerald); color: white; }
-        .blog-shell .topic-row__badge--top5  { background: var(--brand-600); color: white; }
-        .blog-shell .topic-row__badge--top10 { background: var(--bg-muted); color: var(--text-secondary); }
-        .blog-shell .topic-row__body { flex: 1; min-width: 0; }
-        .blog-shell .topic-row__title { font-size: 13px; font-weight: 600; line-height: 1.35; margin-bottom: 3px; }
-        .blog-shell .topic-row__sub { font-size: 11.5px; color: var(--text-muted); display: flex; gap: 4px; flex-wrap: wrap; }
-        .blog-shell .topic-row__score-ring {
-          width: 38px; height: 38px; border-radius: 50%;
-          display: grid; place-items: center; position: relative;
-        }
-        .blog-shell .topic-row__score-inner {
-          position: absolute; inset: 3px; background: white;
-          border-radius: 50%; display: grid; place-items: center;
-          font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums;
+        @keyframes topics-spin { to { transform: rotate(360deg); } }
+        .blog-shell .topics-spinner {
+          display: inline-block;
+          border: 2px solid rgba(255,255,255,0.3);
+          border-top-color: white;
+          border-radius: 50%;
+          animation: topics-spin 0.8s linear infinite;
+          width: 14px; height: 14px;
         }
       `}</style>
     </div>
   )
+}
+
+function BriefField({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div>
+      <div
+        style={{
+          fontSize: 11,
+          color: "var(--text-muted)",
+          fontWeight: 600,
+          textTransform: "uppercase",
+          letterSpacing: ".04em",
+          marginBottom: 6,
+        }}
+      >
+        {label}
+      </div>
+      <div style={{ fontSize: 13 }}>{value}</div>
+    </div>
+  )
+}
+
+function Spinner() {
+  return <span className="topics-spinner" />
 }
