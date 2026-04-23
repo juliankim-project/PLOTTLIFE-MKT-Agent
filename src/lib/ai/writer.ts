@@ -55,7 +55,7 @@ export async function writeAndStoreDraft(input: WriteInput) {
     })
     .join("\n\n")
 
-  const prompt = `플라트라이프(단기임대 플랫폼) 블로그 본문을 작성해줘.
+  const prompt = `플라트라이프(한국 단기임대 플랫폼) 블로그 본문을 작성해줘.
 
 [주제 브리프]
 - 제목: ${topic.title}
@@ -70,25 +70,36 @@ export async function writeAndStoreDraft(input: WriteInput) {
 [아웃라인 — 이 구조 그대로]
 ${outlineBlock}
 
-${styleGuideForPrompt()}
+${styleGuideForPrompt({ withImageSlots: true })}
 
-[요구사항]
-1. 위 아웃라인의 헤딩을 그대로 쓰고, 각 섹션을 자연스럽고 풍부하게 채워줘
-2. Markdown 사용 (## H2, ### H3) — 표는 꼭 필요할 때만
+[출력 요구사항]
+1. 위 아웃라인의 헤딩을 그대로 쓰고, 각 섹션을 자연스럽고 풍부하게 채워라
+2. Markdown 사용 (## H2, ### H3) — 표는 최대 1개, 나머지는 불릿 리스트
 3. 도입부는 아웃라인 첫 H2 앞에 2~3 문단으로 별도 작성 (훅 + 이 글을 읽으면 얻는 것 약속)
 4. 통계·법률·숫자 근거가 있으면 본문에 자연스럽게 녹여라 (한국 임대차보호법 등)
-5. 마지막 섹션은 반드시 플라트 서비스 차별점(다국어·보증금 0원·1주 단기·거주숙소제공확인서)을 자연스럽게 브리지
-6. 문체는 친근한 구어체 (~예요 / ~ 돼요), 의문문 활용 적극적으로
+5. 마지막 섹션은 반드시 플라트라이프 서비스 차별점(보증금 0원 / 1주 단기 / 다국어 / 거주숙소제공확인서)을 자연스럽게 브리지
+6. 스타일 가이드의 **필수 준수 10가지** 와 **금지어 리스트** 를 반드시 지켜라
 7. 전체 ${topic.brief ?? "3000~4000자"} 범위 유지
 
-응답은 **Markdown 본문만** 출력 (다른 설명·주석 금지). 제목(H1)은 포함하지 말고 도입부부터 시작해.`
+[이미지 슬롯 2개 삽입]
+본문 중 독자가 한 번 쉬고 싶어할 자연스러운 지점 2곳에 아래 형식의 주석을 그대로 삽입:
+
+<!-- IMAGE_SLOT_1: {해당 섹션 핵심을 시각적으로 표현하는 한국어 한 문장 설명} -->
+<!-- IMAGE_SLOT_2: {다른 섹션 핵심을 시각적으로 표현하는 한국어 한 문장 설명} -->
+
+슬롯 위치는 H2 섹션 사이의 빈 줄에. 설명은 실제 이미지를 떠올릴 수 있게 구체적으로.
+예) <!-- IMAGE_SLOT_1: 서울 원룸의 밝은 거실에서 노트북으로 한국어 공부 중인 외국인 유학생의 일상 장면 -->
+
+[응답 형식]
+**Markdown 본문만** 출력. 다른 설명·주석·코드블록(\`\`\`markdown) 금지.
+제목(H1)은 포함하지 말고 도입부부터 시작.`
 
   const result = await runAgent({
     agentSlug: "copywriter",
     stage: "write",
     projectId: input.projectId,
     prompt,
-    temperature: 0.7,
+    temperature: 0.5,
     maxTokens: 10000,
     json: false,
   })

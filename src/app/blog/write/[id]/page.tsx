@@ -28,6 +28,7 @@ interface Draft {
   topic_id: string | null
   title: string
   body_markdown: string | null
+  hero_image_url?: string | null
   status: string
   progress_pct: number | null
   metadata: {
@@ -63,6 +64,7 @@ export default function WriteEditor() {
   const [error, setError] = useState<string | null>(null)
   const [phase, setPhase] = useState<"idle" | "writing" | "done">("idle")
   const [progress, setProgress] = useState(0)
+  const [generatingImages, setGeneratingImages] = useState(false)
 
   /** topic 로드 + 기존 draft 가 있는지 체크 */
   const load = useCallback(async () => {
@@ -134,6 +136,36 @@ export default function WriteEditor() {
     } finally {
       setGenerating(false)
       clearInterval(timer)
+    }
+  }
+
+  /** 이미지 생성 — 썸네일 + 본문 IMAGE_SLOT 치환 */
+  const handleGenerateImages = async () => {
+    if (!draft) return
+    setGeneratingImages(true)
+    setError(null)
+    try {
+      const j = await safeFetchJson<{
+        ok: boolean
+        result?: { heroUrl: string | null; replacedSlots: number }
+        error?: string
+      }>(`/api/drafts/${draft.id}/images`, { method: "POST" })
+      if (!j.ok) throw new Error(j.error ?? "이미지 생성 실패")
+      // draft 재로드 → 최신 body + hero url
+      const full = await safeFetchJson<{ ok: boolean; draft?: Draft }>(`/api/drafts/${draft.id}`)
+      if (full.ok && full.draft) {
+        setDraft(full.draft)
+        setBody(full.draft.body_markdown ?? "")
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "이미지 생성 실패"
+      setError(
+        msg.includes("quota") || msg.includes("429")
+          ? "Gemini Image 무료 quota 초과 — 내일 다시 시도하거나 Google Cloud 결제 활성화 필요해요."
+          : msg
+      )
+    } finally {
+      setGeneratingImages(false)
     }
   }
 
@@ -238,6 +270,22 @@ export default function WriteEditor() {
                   {saving ? "저장 중…" : "💾 저장"}
                 </button>
               )}
+              {draft && (
+                <button
+                  className="bbtn bbtn--ghost bbtn--sm"
+                  onClick={handleGenerateImages}
+                  disabled={generatingImages}
+                  title="썸네일 + 본문 IMAGE_SLOT 을 실제 이미지로 생성"
+                >
+                  {generatingImages ? (
+                    <>
+                      <Spinner /> 이미지 생성 중…
+                    </>
+                  ) : (
+                    <>🖼 이미지 생성</>
+                  )}
+                </button>
+              )}
               <button
                 className="bbtn bbtn--primary bbtn--sm"
                 onClick={handleWrite}
@@ -308,7 +356,7 @@ export default function WriteEditor() {
                   background: "white",
                 }}
               >
-                <MarkdownPreview body={body} title={topic.title} />
+                <MarkdownPreview body={body} title={topic.title} heroUrl={draft?.hero_image_url} />
               </div>
             </div>
           ) : (
@@ -452,15 +500,43 @@ function Spinner() {
   return <span className="write-spinner" />
 }
 
-/** 매우 가벼운 Markdown 미리보기 — H1~H3, **bold**, *italic*, - 리스트 */
-function MarkdownPreview({ body, title }: { body: string; title: string }) {
+/** 매우 가벼운 Markdown 미리보기 — H1~H3, **bold**, - 리스트, ![img](url), <!-- IMAGE_SLOT_x --> */
+function MarkdownPreview({
+  body,
+  title,
+  heroUrl,
+}: {
+  body: string
+  title: string
+  heroUrl?: string | null
+}) {
   const lines = body.split("\n")
   const elements: React.ReactNode[] = []
+
+  if (heroUrl) {
+    elements.push(
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        key="hero"
+        src={heroUrl}
+        alt={title}
+        style={{
+          width: "100%",
+          aspectRatio: "16 / 9",
+          objectFit: "cover",
+          borderRadius: 12,
+          marginBottom: 16,
+        }}
+      />
+    )
+  }
+
   elements.push(
     <h1 key="t" style={{ fontSize: 24, fontWeight: 800, marginBottom: 16, letterSpacing: "-.02em" }}>
       {title}
     </h1>
   )
+
   let listItems: string[] = []
   const flushList = (idx: number) => {
     if (listItems.length > 0) {
@@ -476,8 +552,59 @@ function MarkdownPreview({ body, title }: { body: string; title: string }) {
       listItems = []
     }
   }
+
   lines.forEach((raw, i) => {
     const line = raw.trimEnd()
+
+    // IMAGE_SLOT 주석 — 아직 이미지 생성 안된 상태
+    const slotMatch = line.match(/<!--\s*IMAGE_SLOT_(\d+)\s*:\s*(.*?)\s*-->/)
+    if (slotMatch) {
+      flushList(i)
+      elements.push(
+        <div
+          key={i}
+          style={{
+            border: "1px dashed var(--brand-300)",
+            borderRadius: 10,
+            padding: "24px 16px",
+            textAlign: "center",
+            background: "var(--brand-50)",
+            margin: "14px 0",
+            color: "var(--brand-700)",
+            fontSize: 12.5,
+          }}
+        >
+          🖼 IMAGE_SLOT_{slotMatch[1]} · {slotMatch[2]}
+          <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>
+            상단 <b>이미지 생성</b> 버튼을 누르면 실제 이미지로 바뀝니다
+          </div>
+        </div>
+      )
+      return
+    }
+
+    // ![alt](url) 단독 라인
+    const imgMatch = line.match(/^!\[([^\]]*)\]\((https?:\/\/[^)]+)\)$/)
+    if (imgMatch) {
+      flushList(i)
+      elements.push(
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          key={i}
+          src={imgMatch[2]}
+          alt={imgMatch[1]}
+          style={{
+            width: "100%",
+            borderRadius: 10,
+            margin: "14px 0",
+            aspectRatio: "16 / 9",
+            objectFit: "cover",
+          }}
+        />
+      )
+      return
+    }
+
     if (line.startsWith("### ")) {
       flushList(i)
       elements.push(

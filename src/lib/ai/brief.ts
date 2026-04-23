@@ -127,7 +127,7 @@ ${styleGuide}
     stage: "topic",
     projectId: input.projectId,
     prompt,
-    temperature: 0.5,
+    temperature: 0.4,
     maxTokens: 10000,
     json: true,
   })
