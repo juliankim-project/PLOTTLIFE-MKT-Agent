@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useState } from "react"
+import { useCallback, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import { Icon, PageHeader } from "../_ui"
 import { PERSONAS } from "../_lib/stages"
@@ -84,8 +84,10 @@ export default function IdeationPage() {
   const [phase, setPhase] = useState<GenPhase>("idle")
   const [progress, setProgress] = useState(0)
   const [ideas, setIdeas] = useState<DbIdea[]>([])
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [showHistory, setShowHistory] = useState(false)
   const [historyLoading, setHistoryLoading] = useState(false)
+  const [promoting, setPromoting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [lastRunMeta, setLastRunMeta] = useState<{
     count: number
@@ -101,6 +103,49 @@ export default function IdeationPage() {
     setSelectedInputs(n)
   }
 
+  /** fit_score 내림차순 정렬 */
+  const sortedIdeas = useMemo(() => {
+    return [...ideas].sort((a, b) => (b.fit_score ?? 0) - (a.fit_score ?? 0))
+  }, [ideas])
+
+  /** 개별 선택 토글 */
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const n = new Set(prev)
+      if (n.has(id)) n.delete(id)
+      else n.add(id)
+      return n
+    })
+  }
+  const allSelected = ideas.length > 0 && selectedIds.size === ideas.length
+  const someSelected = selectedIds.size > 0 && !allSelected
+  const toggleSelectAll = () => {
+    if (allSelected) setSelectedIds(new Set())
+    else setSelectedIds(new Set(ideas.map((i) => i.id)))
+  }
+
+  /** 선택된 아이디어를 shortlist로 승격 + topics 페이지로 이동 */
+  const promoteAndGoToFunnel = async () => {
+    if (selectedIds.size === 0) return
+    setPromoting(true)
+    setError(null)
+    try {
+      const r = await safeFetchJson<{ ok: boolean; updated?: number; error?: string }>(
+        "/api/ideation/shortlist",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ ids: Array.from(selectedIds) }),
+        }
+      )
+      if (!r.ok) throw new Error(r.error ?? "shortlist 실패")
+      router.push("/blog/topics")
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "넘기기 실패")
+      setPromoting(false)
+    }
+  }
+
   /** 이전 아이디어 불러오기 — 사용자 opt-in */
   const loadHistory = useCallback(async () => {
     setHistoryLoading(true)
@@ -111,7 +156,10 @@ export default function IdeationPage() {
         { cache: "no-store" }
       )
       if (!j.ok) throw new Error(j.error ?? "불러오기 실패")
-      setIdeas(j.ideas ?? [])
+      const list = j.ideas ?? []
+      setIdeas(list)
+      // 불러온 것들도 기본 전체 선택
+      setSelectedIds(new Set(list.map((i) => i.id)))
       setShowHistory(true)
     } catch (e) {
       setError(e instanceof Error ? e.message : "네트워크 오류")
@@ -122,12 +170,16 @@ export default function IdeationPage() {
 
   /** 개별 아이디어 버리기 */
   const discardIdea = async (id: string) => {
-    // optimistic update
     setIdeas((prev) => prev.filter((i) => i.id !== id))
+    setSelectedIds((prev) => {
+      const n = new Set(prev)
+      n.delete(id)
+      return n
+    })
     try {
       await fetch(`/api/ideation/ideas/${id}`, { method: "DELETE" })
     } catch {
-      // 실패해도 UI 롤백은 생략 (다음 새로고침에서 재로드)
+      // 실패해도 UI 롤백은 생략
     }
   }
 
@@ -188,7 +240,10 @@ export default function IdeationPage() {
         durationMs: j.result.durationMs,
       })
       // 새로 만든 것만 뜨게 — 스트림 리셋 후 새 결과로
-      setIdeas(j.result.ideas)
+      const newIdeas = j.result.ideas
+      setIdeas(newIdeas)
+      // 생성 직후 전체 자동 선택 (사용자가 걸러내는 흐름)
+      setSelectedIds(new Set(newIdeas.map((i) => i.id)))
       setShowHistory(false)
       setProgress(100)
       setPhase("done")
@@ -553,11 +608,11 @@ export default function IdeationPage() {
               <div className="bcard__title">아이디어 스트림</div>
               <div className="bcard__sub">
                 {ideas.length > 0
-                  ? `${ideas.length}개${showHistory ? " · 이전 세션 포함" : " · 이번 생성"}`
+                  ? `${selectedIds.size}/${ideas.length}개 선택 · 점수순`
                   : "빈 상태"}
               </div>
             </div>
-            {!showHistory && (
+            {ideas.length === 0 && !showHistory && (
               <button
                 className="bbtn bbtn--ghost bbtn--sm"
                 style={{ marginLeft: "auto" }}
@@ -569,6 +624,43 @@ export default function IdeationPage() {
               </button>
             )}
           </div>
+
+          {ideas.length > 0 && (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                padding: "8px 16px",
+                borderBottom: "1px solid var(--border-subtle)",
+                background: "var(--bg-subtle)",
+              }}
+            >
+              <label
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  fontSize: 12,
+                  cursor: "pointer",
+                  fontWeight: 500,
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={allSelected}
+                  ref={(el) => {
+                    if (el) el.indeterminate = someSelected
+                  }}
+                  onChange={toggleSelectAll}
+                />
+                전체 {allSelected ? "해제" : "선택"}
+              </label>
+              <span style={{ marginLeft: "auto", fontSize: 11, color: "var(--text-muted)" }}>
+                높은 점수 → 낮은 점수 순
+              </span>
+            </div>
+          )}
           <div style={{ maxHeight: 560, overflowY: "auto" }}>
             {phase !== "idle" && phase !== "done" && ideas.length === 0 && (
               <div
@@ -608,21 +700,35 @@ export default function IdeationPage() {
               </div>
             )}
 
-            {ideas.map((i) => {
+            {sortedIdeas.map((i) => {
               const clusterLabel = i.cluster ? CLUSTER_LABEL[i.cluster] ?? i.cluster : "—"
               const score = i.fit_score ?? 0
               const hot = isHotSignal(i.signal?.kind)
+              const checked = selectedIds.has(i.id)
               return (
                 <div
                   key={i.id}
+                  onClick={(e) => {
+                    const tag = (e.target as HTMLElement).tagName
+                    if (tag !== "INPUT" && tag !== "BUTTON") toggleSelect(i.id)
+                  }}
                   style={{
                     padding: "12px 16px",
                     borderBottom: "1px solid var(--border-subtle)",
                     display: "flex",
                     alignItems: "flex-start",
                     gap: 10,
+                    cursor: "pointer",
+                    background: checked ? "var(--brand-50)" : "transparent",
+                    transition: "background 0.1s",
                   }}
                 >
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => toggleSelect(i.id)}
+                    style={{ marginTop: 10, flexShrink: 0, cursor: "pointer" }}
+                  />
                   <div
                     style={{
                       width: 32,
@@ -693,7 +799,10 @@ export default function IdeationPage() {
                     className="bbtn bbtn--ghost bbtn--sm"
                     style={{ padding: "4px 6px" }}
                     title="버리기 (숨김)"
-                    onClick={() => discardIdea(i.id)}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      discardIdea(i.id)
+                    }}
                   >
                     🗑
                   </button>
@@ -712,19 +821,37 @@ export default function IdeationPage() {
             <button
               className="bbtn bbtn--subtle"
               style={{ flex: 1 }}
-              onClick={() => setIdeas([])}
-              disabled={ideas.length === 0}
-              title="현재 스트림 비우기 (DB는 유지)"
+              onClick={() => {
+                setIdeas([])
+                setSelectedIds(new Set())
+              }}
+              disabled={ideas.length === 0 || promoting}
+              title="현재 스트림 비우기 (DB 는 유지)"
             >
               화면 비우기
             </button>
             <button
               className="bbtn bbtn--primary"
               style={{ flex: 2 }}
-              onClick={() => router.push("/blog/topics")}
-              disabled={ideas.length === 0}
+              onClick={promoteAndGoToFunnel}
+              disabled={selectedIds.size === 0 || promoting}
+              title={
+                selectedIds.size === 0
+                  ? "최소 1개 이상 선택해야 넘길 수 있어요"
+                  : `${selectedIds.size}개를 shortlist 로 등록 후 주제선정 퍼널로 이동`
+              }
             >
-              퍼널로 넘기기 <Icon name="chevron" size={12} />
+              {promoting ? (
+                <>
+                  <Spinner />
+                  <span style={{ marginLeft: 4 }}>넘기는 중…</span>
+                </>
+              ) : (
+                <>
+                  {selectedIds.size > 0 ? `${selectedIds.size}개 ` : ""}퍼널로 넘기기{" "}
+                  <Icon name="chevron" size={12} />
+                </>
+              )}
             </button>
           </div>
         </div>
