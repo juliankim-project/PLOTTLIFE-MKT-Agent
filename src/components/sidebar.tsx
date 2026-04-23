@@ -59,7 +59,7 @@ const Icon = {
 
 // ── Navigation Definition ─────────────────────────
 const navItems: NavItem[] = [
-  { kind: "leaf", label: "에이전트 팀", href: "/", icon: Icon.home },
+  { kind: "leaf", label: "Agent List", href: "/", icon: Icon.home },
   {
     kind: "group",
     label: "블로그 파이프라인",
@@ -121,8 +121,8 @@ export function Sidebar() {
             </svg>
           </div>
           <div>
-            <h1 className="font-bold text-sm">AI 마케팅 오피스</h1>
-            <p className="text-[11px] text-muted-foreground">에이전트 팀 대시보드</p>
+            <h1 className="font-bold text-sm">Plott LIFE MKT</h1>
+            <p className="text-[11px] text-muted-foreground">Agent Dashboard</p>
           </div>
         </div>
       </div>

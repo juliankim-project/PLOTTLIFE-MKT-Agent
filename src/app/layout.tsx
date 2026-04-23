@@ -15,8 +15,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "AI 마케팅 에이전트 오피스",
-  description: "마케팅 AI 에이전트 팀 대시보드",
+  title: "PLOTTLIFE-MKT",
+  description: "MKT AGENT DASHBOARD",
 };
 
 export default function RootLayout({
