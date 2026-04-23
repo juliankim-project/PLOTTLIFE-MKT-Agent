@@ -1,234 +1,430 @@
 "use client"
 
-import { useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
+import { useRouter } from "next/navigation"
 import { Icon, PageHeader } from "../_ui"
 
-type Tab = "trends" | "competitor" | "product"
+type Category = "location" | "campus" | "type" | "duration" | "option" | "situation" | "foreigner" | "seasonal"
+type Competition = "low" | "medium" | "high" | "unknown"
+type Sort = "total" | "pc" | "mobile" | "alpha"
 
-const TRENDS = [
-  { kw: "보증금 없는 단기임대", vol: 34200, growth: 142, comp: "낮음", persona: "외국인 유학생" },
-  { kw: "서울 한달살기", vol: 67100, growth: 52, comp: "중", persona: "한달살기 여행자" },
-  { kw: "외국인등록증(ARC) 발급", vol: 18200, growth: 28, comp: "낮음", persona: "외국인 유학생" },
-  { kw: "성수동 한달살기", vol: 12400, growth: 27, comp: "낮음", persona: "디지털 노마드" },
-  { kw: "기후동행카드 외국인", vol: 8900, growth: 180, comp: "낮음", persona: "외국인 유학생" },
-  { kw: "이사 과도기 단기임대", vol: 9800, growth: 64, comp: "낮음", persona: "내국인 이사 과도기" },
-]
+interface Keyword {
+  id: string
+  label: string
+  category: Category | null
+  monthly_pc: number | null
+  monthly_mobile: number | null
+  monthly_total: number | null
+  competition: Competition | null
+  enriched_at: string | null
+}
 
-const COMPETITORS = [
-  { name: "엔코스테이 (N)", posts: 142, avgRead: "5:28", topics: ["한달살기", "노마드", "체험"] },
-  { name: "미스터멘션", posts: 96, avgRead: "4:10", topics: ["장기임대", "지역", "예약 팁"] },
-  { name: "Airbnb 뉴스룸 KR", posts: 58, avgRead: "3:42", topics: ["호스팅", "트렌드", "지역"] },
-  { name: "직방 블로그", posts: 238, avgRead: "6:15", topics: ["부동산", "시세", "이사"] },
-]
+const CAT_META: Record<Category, { label: string; icon: string; color: string }> = {
+  location: { label: "지역·동네", icon: "📍", color: "#3B82F6" },
+  campus: { label: "대학 주변", icon: "🎓", color: "#8B5CF6" },
+  type: { label: "매물 타입", icon: "🏠", color: "#0EA5E9" },
+  duration: { label: "기간·계약", icon: "⏱", color: "#F59E0B" },
+  option: { label: "옵션·편의", icon: "🛋", color: "#10B981" },
+  situation: { label: "상황·니즈", icon: "🎯", color: "#EC4899" },
+  foreigner: { label: "외국인·유학생", icon: "🌏", color: "#6366F1" },
+  seasonal: { label: "시즌성", icon: "📅", color: "#F43F5E" },
+}
+
+const COMP_STYLE: Record<Competition, { label: string; bg: string; fg: string }> = {
+  low: { label: "경쟁 낮음", bg: "#ECFDF5", fg: "#047857" },
+  medium: { label: "경쟁 중간", bg: "#FFFBEB", fg: "#B45309" },
+  high: { label: "경쟁 높음", bg: "#FEF2F2", fg: "#B91C1C" },
+  unknown: { label: "—", bg: "#F3F4F6", fg: "#6B7280" },
+}
+
+async function safeFetchJson<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
+  const r = await fetch(input, init)
+  const text = await r.text()
+  try {
+    return JSON.parse(text) as T
+  } catch {
+    throw new Error(r.ok ? "응답 파싱 실패" : `HTTP ${r.status}`)
+  }
+}
 
 export default function ResearchPage() {
-  const [tab, setTab] = useState<Tab>("trends")
+  const router = useRouter()
+  const [keywords, setKeywords] = useState<Keyword[]>([])
+  const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const [activeCat, setActiveCat] = useState<"all" | Category>("all")
+  const [sort, setSort] = useState<Sort>("total")
+  const [search, setSearch] = useState("")
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+
+  const load = useCallback(
+    async (s: Sort = sort) => {
+      setLoading(true)
+      try {
+        const j = await safeFetchJson<{ ok: boolean; keywords?: Keyword[] }>(
+          `/api/research/keywords?sort=${s}`,
+          { cache: "no-store" }
+        )
+        if (j.ok) setKeywords(j.keywords ?? [])
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "오류")
+      } finally {
+        setLoading(false)
+      }
+    },
+    [sort]
+  )
+
+  useEffect(() => {
+    load(sort)
+  }, [load, sort])
+
+  const visible = useMemo(() => {
+    let list = keywords
+    if (activeCat !== "all") list = list.filter((k) => k.category === activeCat)
+    if (search.trim()) {
+      const q = search.trim()
+      list = list.filter((k) => k.label.includes(q))
+    }
+    return list
+  }, [keywords, activeCat, search])
+
+  const categoryCounts = useMemo(() => {
+    const m: Record<string, number> = { all: keywords.length }
+    for (const k of keywords) {
+      const c = k.category ?? "etc"
+      m[c] = (m[c] ?? 0) + 1
+    }
+    return m
+  }, [keywords])
+
+  const toggleSelect = (id: string) => {
+    setSelected((prev) => {
+      const n = new Set(prev)
+      if (n.has(id)) n.delete(id)
+      else n.add(id)
+      return n
+    })
+  }
+  const allVisibleSelected = visible.length > 0 && visible.every((k) => selected.has(k.id))
+  const someSelected = selected.size > 0 && !allVisibleSelected
+  const toggleAllVisible = () => {
+    if (allVisibleSelected) {
+      const n = new Set(selected)
+      visible.forEach((k) => n.delete(k.id))
+      setSelected(n)
+    } else {
+      const n = new Set(selected)
+      visible.forEach((k) => n.add(k.id))
+      setSelected(n)
+    }
+  }
+
+  const refreshSelected = async () => {
+    if (selected.size === 0) return
+    setRefreshing(true)
+    try {
+      const j = await safeFetchJson<{ ok: boolean; refreshed?: number; error?: string }>(
+        "/api/research/refresh",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ ids: Array.from(selected) }),
+        }
+      )
+      if (!j.ok) throw new Error(j.error ?? "refresh 실패")
+      await load()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "새로고침 실패")
+    } finally {
+      setRefreshing(false)
+    }
+  }
+
+  const goToIdeation = () => {
+    if (selected.size === 0) return
+    const ids = Array.from(selected).join(",")
+    router.push(`/blog/ideation?keywords=${encodeURIComponent(ids)}`)
+  }
 
   return (
     <div className="bpage fade-up">
       <PageHeader
         eyebrow="STAGE 01 · RESEARCH"
-        title="리서치"
-        sub="타겟 독자 검색·경쟁사·플라트 자사 데이터를 수집해 다음 단계의 인풋으로 정리합니다."
+        title="리서치 — 키워드 라이브러리"
+        sub="네이버 검색광고 데이터 기반 실제 월 검색량. 이번 라운드에 쓸 키워드를 체크해서 아이데이션으로 넘기면 주제가 자동 확장됩니다."
         actions={[
-          { label: "새 소스 연결", primary: true, icon: "plus" },
-          { label: "CSV 내보내기", icon: "upload" },
+          {
+            label: refreshing ? "새로고침 중…" : `🔄 선택 수치 새로고침 (${selected.size})`,
+            onClick: refreshSelected,
+          },
         ]}
       />
 
-      <div className="btabs">
-        <button className={`btab${tab === "trends" ? " btab--active" : ""}`} onClick={() => setTab("trends")}>
-          검색 트렌드
-        </button>
-        <button className={`btab${tab === "competitor" ? " btab--active" : ""}`} onClick={() => setTab("competitor")}>
-          경쟁사 블로그
-        </button>
-        <button className={`btab${tab === "product" ? " btab--active" : ""}`} onClick={() => setTab("product")}>
-          플라트 자사 데이터
-        </button>
-      </div>
-
-      {tab === "trends" && (
-        <div className="bcard">
-          <div className="bcard__header">
-            <div>
-              <div className="bcard__title">네이버 · 구글 트렌드 (지난 30일)</div>
-              <div className="bcard__sub">검색량 기준 TOP 6 · 자동 업데이트 매일 오전 9시</div>
-            </div>
-            <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
-              <span className="bchip bchip--brand">실시간 동기화</span>
-              <button className="bbtn bbtn--subtle bbtn--sm">
-                <Icon name="filter" size={12} /> 필터
-              </button>
-            </div>
-          </div>
-          <div style={{ overflow: "auto" }}>
-            <table className="btbl">
-              <thead>
-                <tr>
-                  <th>키워드</th>
-                  <th>월간 검색량</th>
-                  <th>성장률</th>
-                  <th>경쟁도</th>
-                  <th>페르소나</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {TRENDS.map((t) => (
-                  <tr key={t.kw}>
-                    <td style={{ fontWeight: 600 }}>{t.kw}</td>
-                    <td className="text-mono">{t.vol.toLocaleString()}</td>
-                    <td>
-                      <span
-                        className={`bchip ${
-                          t.growth > 100 ? "bchip--success" : t.growth > 50 ? "bchip--info" : ""
-                        }`}
-                      >
-                        <Icon name="trend" size={11} /> +{t.growth}%
-                      </span>
-                    </td>
-                    <td>
-                      <span
-                        className={`bchip ${
-                          t.comp === "낮음" ? "bchip--success" : t.comp === "높음" ? "bchip--danger" : "bchip--warning"
-                        }`}
-                      >
-                        {t.comp}
-                      </span>
-                    </td>
-                    <td style={{ color: "var(--text-tertiary)" }}>{t.persona}</td>
-                    <td style={{ textAlign: "right" }}>
-                      <button className="bbtn bbtn--ghost bbtn--sm">
-                        아이데이션 <Icon name="chevron" size={11} />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+      {error && (
+        <div
+          style={{
+            marginBottom: 16,
+            padding: "10px 14px",
+            background: "var(--danger-bg)",
+            border: "1px solid var(--danger-border)",
+            color: "var(--danger-fg)",
+            borderRadius: "var(--r-md)",
+            fontSize: 13,
+          }}
+        >
+          ⚠️ {error}
+          <button onClick={() => setError(null)} style={{ marginLeft: "auto", color: "var(--danger-fg)" }}>
+            ✕
+          </button>
         </div>
       )}
 
-      {tab === "competitor" && (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 12 }}>
-          {COMPETITORS.map((c) => (
-            <div key={c.name} className="bcard">
-              <div className="bcard__body">
-                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-                  <div
-                    style={{
-                      width: 36,
-                      height: 36,
-                      borderRadius: 9,
-                      background: "var(--brand-50)",
-                      color: "var(--brand-600)",
-                      display: "grid",
-                      placeItems: "center",
-                      fontWeight: 700,
-                    }}
-                  >
-                    {c.name[0]}
-                  </div>
-                  <div>
-                    <div style={{ fontWeight: 700 }}>{c.name}</div>
-                    <div style={{ fontSize: 12, color: "var(--text-muted)" }}>최근 수집: 2시간 전</div>
-                  </div>
-                  <span className="bchip bchip--success" style={{ marginLeft: "auto" }}>
-                    <span className="bchip__dot" /> 동기화
-                  </span>
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, margin: "12px 0" }}>
-                  <Metric k="수집 포스트" v={c.posts.toString()} />
-                  <Metric k="평균 읽기 시간" v={c.avgRead} />
-                </div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-                  {c.topics.map((t) => (
-                    <span key={t} className="bchip">
-                      #{t}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            </div>
+      {/* 카테고리 필터 */}
+      <div className="bcard" style={{ marginBottom: 14 }}>
+        <div style={{ padding: "14px 16px", display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
+          <CatChip
+            label="전체"
+            icon="✨"
+            color="#0F172A"
+            active={activeCat === "all"}
+            count={categoryCounts.all}
+            onClick={() => setActiveCat("all")}
+          />
+          {(Object.keys(CAT_META) as Category[]).map((c) => (
+            <CatChip
+              key={c}
+              label={CAT_META[c].label}
+              icon={CAT_META[c].icon}
+              color={CAT_META[c].color}
+              active={activeCat === c}
+              count={categoryCounts[c] ?? 0}
+              onClick={() => setActiveCat(c)}
+            />
           ))}
-          <div
-            className="bcard"
+        </div>
+        <div
+          style={{
+            padding: "10px 16px",
+            borderTop: "1px solid var(--border-subtle)",
+            display: "flex",
+            gap: 10,
+            alignItems: "center",
+            flexWrap: "wrap",
+          }}
+        >
+          <input
+            placeholder="🔍 키워드 검색…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
             style={{
-              display: "grid",
-              placeItems: "center",
-              minHeight: 180,
-              borderStyle: "dashed",
+              flex: 1,
+              minWidth: 200,
+              padding: "6px 10px",
+              border: "1px solid var(--border-default)",
+              borderRadius: "var(--r-md)",
+              fontSize: 13,
+              outline: "none",
               background: "var(--bg-subtle)",
             }}
-          >
-            <div style={{ textAlign: "center" }}>
-              <div
-                style={{
-                  width: 40,
-                  height: 40,
-                  borderRadius: 10,
-                  background: "white",
-                  border: "1px solid var(--border-default)",
-                  display: "grid",
-                  placeItems: "center",
-                  margin: "0 auto 10px",
-                }}
+          />
+          <div style={{ display: "flex", gap: 4 }}>
+            {(
+              [
+                { k: "total", l: "월 합계" },
+                { k: "pc", l: "PC" },
+                { k: "mobile", l: "모바일" },
+                { k: "alpha", l: "이름순" },
+              ] as const
+            ).map((s) => (
+              <button
+                key={s.k}
+                onClick={() => setSort(s.k)}
+                className={`bbtn ${sort === s.k ? "bbtn--primary" : "bbtn--ghost"} bbtn--sm`}
               >
-                <Icon name="plus" />
-              </div>
-              <div style={{ fontWeight: 600, fontSize: 13 }}>경쟁사 URL 추가</div>
-              <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>
-                RSS/사이트맵 자동 감지
-              </div>
-            </div>
+                {s.l}
+              </button>
+            ))}
           </div>
         </div>
-      )}
+      </div>
 
-      {tab === "product" && (
-        <div className="bcard">
-          <div className="bcard__body">
-            <div style={{ fontWeight: 600, marginBottom: 12 }}>플라트 자사 인덱스</div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
-              {[
-                "매물 카탈로그 (1,842건)",
-                "FAQ 데이터셋 (218건)",
-                "게스트 리뷰 스니펫 (3,104건)",
-                "유학생 커뮤니티 멘션",
-                "예약 전환 로그",
-                "호스트 인터뷰 아카이브",
-              ].map((x) => (
-                <div
-                  key={x}
-                  style={{
-                    padding: 14,
-                    border: "1px solid var(--border-default)",
-                    borderRadius: "var(--r-md)",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 10,
-                    background: "var(--bg-subtle)",
-                  }}
-                >
-                  <Icon name="link" size={14} />
-                  <span style={{ fontSize: 13 }}>{x}</span>
-                </div>
-              ))}
-            </div>
+      {/* 키워드 테이블 */}
+      <div className="bcard">
+        <div className="bcard__header">
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <label
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                fontSize: 12,
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={allVisibleSelected}
+                ref={(el) => {
+                  if (el) el.indeterminate = someSelected
+                }}
+                onChange={toggleAllVisible}
+              />
+              전체 {allVisibleSelected ? "해제" : "선택"}
+            </label>
+            <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
+              {loading ? "불러오는 중…" : `${selected.size}/${visible.length}개 선택 · ${visible.length}개 표시`}
+            </span>
           </div>
+          <button
+            className="bbtn bbtn--primary bbtn--sm"
+            style={{ marginLeft: "auto" }}
+            onClick={goToIdeation}
+            disabled={selected.size === 0}
+          >
+            {selected.size > 0 ? `${selected.size}개로 ` : ""}아이데이션 <Icon name="chevron" size={12} />
+          </button>
         </div>
-      )}
+        <div style={{ overflow: "auto" }}>
+          <table className="btbl">
+            <thead>
+              <tr>
+                <th style={{ width: 30 }}></th>
+                <th>키워드</th>
+                <th style={{ width: 90 }}>카테고리</th>
+                <th style={{ width: 70, textAlign: "right" }}>PC</th>
+                <th style={{ width: 80, textAlign: "right" }}>모바일</th>
+                <th style={{ width: 90, textAlign: "right" }}>월 합계</th>
+                <th style={{ width: 90 }}>경쟁도</th>
+              </tr>
+            </thead>
+            <tbody>
+              {visible.map((k) => {
+                const cat = k.category ? CAT_META[k.category] : null
+                const comp = COMP_STYLE[k.competition ?? "unknown"]
+                const checked = selected.has(k.id)
+                return (
+                  <tr
+                    key={k.id}
+                    onClick={(e) => {
+                      if ((e.target as HTMLElement).tagName !== "INPUT") toggleSelect(k.id)
+                    }}
+                    style={{
+                      cursor: "pointer",
+                      background: checked ? "var(--brand-50)" : undefined,
+                    }}
+                  >
+                    <td style={{ textAlign: "center" }}>
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => toggleSelect(k.id)}
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                    </td>
+                    <td style={{ fontWeight: 600 }}>{k.label}</td>
+                    <td>
+                      {cat && (
+                        <span
+                          className="bchip"
+                          style={{
+                            background: cat.color + "18",
+                            color: cat.color,
+                            fontSize: 10.5,
+                          }}
+                        >
+                          {cat.icon} {cat.label}
+                        </span>
+                      )}
+                    </td>
+                    <td className="text-mono" style={{ textAlign: "right", color: "var(--text-tertiary)" }}>
+                      {k.monthly_pc?.toLocaleString() ?? "—"}
+                    </td>
+                    <td className="text-mono" style={{ textAlign: "right", color: "var(--text-tertiary)" }}>
+                      {k.monthly_mobile?.toLocaleString() ?? "—"}
+                    </td>
+                    <td
+                      className="text-mono"
+                      style={{ textAlign: "right", fontWeight: 700, fontSize: 13 }}
+                    >
+                      {k.monthly_total?.toLocaleString() ?? "—"}
+                    </td>
+                    <td>
+                      <span
+                        className="bchip"
+                        style={{
+                          background: comp.bg,
+                          color: comp.fg,
+                          fontSize: 10.5,
+                        }}
+                      >
+                        {comp.label}
+                      </span>
+                    </td>
+                  </tr>
+                )
+              })}
+              {visible.length === 0 && !loading && (
+                <tr>
+                  <td colSpan={7} style={{ padding: "40px 20px", textAlign: "center", color: "var(--text-muted)" }}>
+                    조건에 맞는 키워드가 없어요
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   )
 }
 
-function Metric({ k, v }: { k: string; v: string }) {
+function CatChip({
+  label,
+  icon,
+  color,
+  count,
+  active,
+  onClick,
+}: {
+  label: string
+  icon: string
+  color: string
+  count: number
+  active: boolean
+  onClick: () => void
+}) {
   return (
-    <div style={{ padding: "8px 10px", background: "var(--bg-subtle)", borderRadius: "var(--r-sm)" }}>
-      <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{k}</div>
-      <div style={{ fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>{v}</div>
-    </div>
+    <button
+      onClick={onClick}
+      className="bbtn"
+      style={{
+        padding: "6px 12px",
+        fontSize: 12,
+        fontWeight: 500,
+        background: active ? color : "var(--bg-muted)",
+        color: active ? "white" : "var(--text-secondary)",
+        border: active ? `1px solid ${color}` : "1px solid transparent",
+      }}
+    >
+      <span>{icon}</span>
+      {label}
+      <span
+        style={{
+          fontSize: 10.5,
+          fontWeight: 600,
+          padding: "1px 6px",
+          borderRadius: 8,
+          background: active ? "rgba(255,255,255,.25)" : "var(--bg-surface)",
+          color: active ? "white" : "var(--text-tertiary)",
+          marginLeft: 2,
+        }}
+      >
+        {count}
+      </span>
+    </button>
   )
 }

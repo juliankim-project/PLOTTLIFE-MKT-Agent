@@ -1,10 +1,18 @@
 "use client"
 
-import { useCallback, useMemo, useState } from "react"
-import { useRouter } from "next/navigation"
+import { useCallback, useEffect, useMemo, useState, Suspense } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
 import { Icon, PageHeader } from "../_ui"
 import { PERSONAS } from "../_lib/stages"
 import type { IconName } from "../_lib/stages"
+
+interface PickedKeyword {
+  id: string
+  label: string
+  category: string | null
+  monthly_total: number | null
+  competition: string | null
+}
 
 interface InputSource {
   id: string
@@ -69,8 +77,17 @@ async function safeFetchJson<T = unknown>(
 
 type GenPhase = "idle" | "calling-ai" | "parsing" | "saving" | "done"
 
-export default function IdeationPage() {
+export default function IdeationPageWrapper() {
+  return (
+    <Suspense fallback={<div className="bpage">불러오는 중…</div>}>
+      <IdeationPage />
+    </Suspense>
+  )
+}
+
+function IdeationPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [selectedInputs, setSelectedInputs] = useState<Set<string>>(
     new Set(["trends", "competitor", "product"])
   )
@@ -95,6 +112,39 @@ export default function IdeationPage() {
     model: string
     durationMs: number
   } | null>(null)
+
+  /** 리서치에서 ?keywords=id1,id2,... 로 받아온 키워드 */
+  const [pickedKeywords, setPickedKeywords] = useState<PickedKeyword[]>([])
+  const keywordsParam = searchParams.get("keywords")
+
+  useEffect(() => {
+    if (!keywordsParam) return
+    const ids = keywordsParam.split(",").filter(Boolean)
+    if (ids.length === 0) return
+    ;(async () => {
+      try {
+        const r = await fetch(`/api/research/keywords`, { cache: "no-store" })
+        const j = await r.json()
+        if (j.ok && Array.isArray(j.keywords)) {
+          const set = new Set(ids)
+          setPickedKeywords(
+            j.keywords
+              .filter((k: PickedKeyword) => set.has(k.id))
+              .sort(
+                (a: PickedKeyword, b: PickedKeyword) =>
+                  (b.monthly_total ?? 0) - (a.monthly_total ?? 0)
+              )
+          )
+        }
+      } catch {
+        /* silent */
+      }
+    })()
+  }, [keywordsParam])
+
+  const removePickedKeyword = (id: string) => {
+    setPickedKeywords((prev) => prev.filter((k) => k.id !== id))
+  }
 
   const toggle = (id: string) => {
     const n = new Set(selectedInputs)
@@ -201,13 +251,30 @@ export default function IdeationPage() {
 
     try {
       const persona = PERSONAS.find((p) => p.id === selectedPersona)
+
+      // 리서치에서 받은 키워드를 프롬프트에 자동 주입
+      const keywordBlock =
+        pickedKeywords.length > 0
+          ? `\n[리서치에서 넘어온 우선 키워드 — 이 키워드들을 중심으로 주제를 확장해줘]\n${pickedKeywords
+              .map(
+                (k) =>
+                  `- ${k.label} (월 ${k.monthly_total?.toLocaleString() ?? "?"}회${
+                    k.competition ? `, 경쟁 ${k.competition}` : ""
+                  })`
+              )
+              .join("\n")}`
+          : ""
+
       const researchContext = [
         `선택된 인풋 소스: ${Array.from(selectedInputs)
           .map((id) => INPUTS.find((x) => x.id === id)?.label)
           .filter(Boolean)
           .join(", ")}`,
+        keywordBlock,
         `\n사용자 가이드:\n${prompt}`,
-      ].join("\n")
+      ]
+        .filter(Boolean)
+        .join("\n")
 
       const j = await safeFetchJson<{
         ok: boolean
@@ -317,6 +384,73 @@ export default function IdeationPage() {
           >
             ✕
           </button>
+        </div>
+      )}
+
+      {pickedKeywords.length > 0 && (
+        <div
+          className="bcard"
+          style={{
+            marginBottom: 14,
+            padding: "14px 18px",
+            background: "linear-gradient(180deg, var(--brand-50), var(--bg-surface))",
+            borderColor: "var(--brand-200)",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: "var(--brand-700)", textTransform: "uppercase", letterSpacing: ".06em" }}>
+              🔍 리서치에서 받은 키워드
+            </span>
+            <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+              {pickedKeywords.length}개 · 이 키워드를 중심으로 주제 확장
+            </span>
+            <a
+              href="/blog/research"
+              style={{ marginLeft: "auto", fontSize: 11, color: "var(--brand-600)", fontWeight: 600 }}
+            >
+              ← 리서치로 돌아가기
+            </a>
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {pickedKeywords.map((k) => (
+              <span
+                key={k.id}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  padding: "4px 10px",
+                  background: "white",
+                  border: "1px solid var(--brand-200)",
+                  borderRadius: 999,
+                  fontSize: 12,
+                  fontWeight: 500,
+                }}
+              >
+                {k.label}
+                {k.monthly_total != null && (
+                  <span className="text-mono" style={{ fontSize: 10.5, color: "var(--text-muted)" }}>
+                    · {k.monthly_total.toLocaleString()}/월
+                  </span>
+                )}
+                <button
+                  onClick={() => removePickedKeyword(k.id)}
+                  style={{
+                    color: "var(--text-muted)",
+                    fontSize: 11,
+                    padding: 0,
+                    marginLeft: 2,
+                    cursor: "pointer",
+                    background: "transparent",
+                    border: 0,
+                  }}
+                  title="이 키워드 제외"
+                >
+                  ✕
+                </button>
+              </span>
+            ))}
+          </div>
         </div>
       )}
 
