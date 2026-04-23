@@ -31,11 +31,18 @@ export async function POST(
   // 1. draft + topic 로드
   const { data: draft, error: draftErr } = await db
     .from("drafts")
-    .select("id, project_id, topic_id, title, body_markdown, hero_image_url, persona_id")
+    .select("id, project_id, topic_id, title, body_markdown, hero_image_url")
     .eq("id", draftId)
     .single()
   if (draftErr || !draft) {
-    return NextResponse.json({ ok: false, error: "draft not found" }, { status: 404 })
+    return NextResponse.json(
+      {
+        ok: false,
+        error: `draft not found (id=${draftId})`,
+        detail: draftErr?.message ?? null,
+      },
+      { status: 404 }
+    )
   }
 
   const topicTitle = draft.title ?? ""
