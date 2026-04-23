@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useState } from "react"
 import { useRouter } from "next/navigation"
 import { Icon, PageHeader } from "../_ui"
 import { PERSONAS } from "../_lib/stages"
@@ -22,13 +22,8 @@ const INPUTS: InputSource[] = [
 ]
 
 const CLUSTER_LABEL: Record<string, string> = {
-  consider: "Consider",
-  prepare: "Prepare",
-  arrive: "Arrive",
-  settle: "Settle",
-  live: "Live",
-  explore: "Explore",
-  change: "Change",
+  consider: "Consider", prepare: "Prepare", arrive: "Arrive", settle: "Settle",
+  live: "Live", explore: "Explore", change: "Change",
 }
 
 interface DbIdea {
@@ -49,10 +44,30 @@ function formatVolume(v: number | null): string {
   if (v >= 1000) return `${(v / 1000).toFixed(v >= 10000 ? 0 : 1)}K`
   return String(v)
 }
-
 function isHotSignal(kind?: string): boolean {
   return kind === "search-rising" || kind === "competitor-miss"
 }
+
+/** fetch 결과를 안전하게 JSON 으로 파싱 (Vercel timeout 시 HTML/text 반환 대응) */
+async function safeFetchJson<T = unknown>(
+  input: RequestInfo | URL,
+  init?: RequestInit
+): Promise<T> {
+  const r = await fetch(input, init)
+  const text = await r.text()
+  try {
+    return JSON.parse(text) as T
+  } catch {
+    const preview = text.slice(0, 200).replace(/\s+/g, " ").trim()
+    throw new Error(
+      r.ok
+        ? `응답이 JSON 이 아니에요 — ${preview}`
+        : `요청 실패 (HTTP ${r.status}) — ${preview}`
+    )
+  }
+}
+
+type GenPhase = "idle" | "calling-ai" | "parsing" | "saving" | "done"
 
 export default function IdeationPage() {
   const router = useRouter()
@@ -66,9 +81,11 @@ export default function IdeationPage() {
     "선택된 인풋과 페르소나를 바탕으로, 플라트라이프 게스트 여정 단계(Consider/Prepare/Arrive/Settle/Live/Explore/Change)별로 분산해 롱테일 단기임대 주제를 30개 생성해줘."
   )
 
-  const [generating, setGenerating] = useState(false)
-  const [loading, setLoading] = useState(true)
+  const [phase, setPhase] = useState<GenPhase>("idle")
+  const [progress, setProgress] = useState(0)
   const [ideas, setIdeas] = useState<DbIdea[]>([])
+  const [showHistory, setShowHistory] = useState(false)
+  const [historyLoading, setHistoryLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [lastRunMeta, setLastRunMeta] = useState<{
     count: number
@@ -84,29 +101,52 @@ export default function IdeationPage() {
     setSelectedInputs(n)
   }
 
-  // 최초 로드 — DB에서 기존 아이디어 가져오기
-  const loadIdeas = useCallback(async () => {
-    setLoading(true)
+  /** 이전 아이디어 불러오기 — 사용자 opt-in */
+  const loadHistory = useCallback(async () => {
+    setHistoryLoading(true)
+    setError(null)
     try {
-      const r = await fetch("/api/ideation/ideas?limit=50", { cache: "no-store" })
-      const j = await r.json()
-      if (j.ok) setIdeas(j.ideas as DbIdea[])
-      else setError(j.error ?? "불러오기 실패")
+      const j = await safeFetchJson<{ ok: boolean; ideas?: DbIdea[]; error?: string }>(
+        "/api/ideation/ideas?status=draft&limit=50",
+        { cache: "no-store" }
+      )
+      if (!j.ok) throw new Error(j.error ?? "불러오기 실패")
+      setIdeas(j.ideas ?? [])
+      setShowHistory(true)
     } catch (e) {
       setError(e instanceof Error ? e.message : "네트워크 오류")
     } finally {
-      setLoading(false)
+      setHistoryLoading(false)
     }
   }, [])
 
-  useEffect(() => {
-    loadIdeas()
-  }, [loadIdeas])
+  /** 개별 아이디어 버리기 */
+  const discardIdea = async (id: string) => {
+    // optimistic update
+    setIdeas((prev) => prev.filter((i) => i.id !== id))
+    try {
+      await fetch(`/api/ideation/ideas/${id}`, { method: "DELETE" })
+    } catch {
+      // 실패해도 UI 롤백은 생략 (다음 새로고침에서 재로드)
+    }
+  }
 
-  // 실제 AI 호출
+  /** AI로 주제 생성 */
   const handleGenerate = async () => {
-    setGenerating(true)
     setError(null)
+    setLastRunMeta(null)
+    setPhase("calling-ai")
+    setProgress(8)
+
+    // 가짜 progress — 실제 응답 기다리는 동안 사용자 피드백
+    let tick = 0
+    const timer = setInterval(() => {
+      tick++
+      setProgress((p) => Math.min(p + (tick < 10 ? 4 : 2), 92))
+      if (tick === 12) setPhase("parsing")
+      if (tick === 20) setPhase("saving")
+    }, 1500)
+
     try {
       const persona = PERSONAS.find((p) => p.id === selectedPersona)
       const researchContext = [
@@ -117,7 +157,17 @@ export default function IdeationPage() {
         `\n사용자 가이드:\n${prompt}`,
       ].join("\n")
 
-      const r = await fetch("/api/ideation/run", {
+      const j = await safeFetchJson<{
+        ok: boolean
+        result?: {
+          count: number
+          provider: string
+          model: string
+          durationMs: number
+          ideas: DbIdea[]
+        }
+        error?: string
+      }>("/api/ideation/run", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
@@ -128,8 +178,8 @@ export default function IdeationPage() {
           researchContext,
         }),
       })
-      const j = await r.json()
-      if (!j.ok) throw new Error(j.error ?? `status ${r.status}`)
+
+      if (!j.ok || !j.result) throw new Error(j.error ?? "생성 실패")
 
       setLastRunMeta({
         count: j.result.count,
@@ -137,13 +187,35 @@ export default function IdeationPage() {
         model: j.result.model,
         durationMs: j.result.durationMs,
       })
-      // 갓 생성된 ideas를 맨 위로 + 기존 뒤에 유지
-      setIdeas((prev) => [...(j.result.ideas as DbIdea[]), ...prev])
+      // 새로 만든 것만 뜨게 — 스트림 리셋 후 새 결과로
+      setIdeas(j.result.ideas)
+      setShowHistory(false)
+      setProgress(100)
+      setPhase("done")
+      setTimeout(() => {
+        setPhase("idle")
+        setProgress(0)
+      }, 1500)
     } catch (e) {
-      setError(e instanceof Error ? e.message : "생성 실패")
+      const msg = e instanceof Error ? e.message : "생성 실패"
+      setError(
+        msg.includes("504") || msg.includes("timeout") || msg.includes("JSON")
+          ? "서버 응답이 너무 오래 걸렸어요. Gemini가 혼잡한 시간일 수 있습니다 — 1분 뒤 다시 시도해 보세요. 이미 생성된 주제는 '이전 아이디어 불러오기'에서 확인할 수 있어요."
+          : msg
+      )
+      setPhase("idle")
+      setProgress(0)
     } finally {
-      setGenerating(false)
+      clearInterval(timer)
     }
+  }
+
+  const phaseLabel: Record<GenPhase, string> = {
+    idle: "",
+    "calling-ai": "Gemini 에이전트에게 주제를 요청 중…",
+    parsing: "응답을 분석하고 여정 단계별로 분류 중…",
+    saving: "DB에 아이디어를 저장 중…",
+    done: "완료!",
   }
 
   return (
@@ -152,7 +224,13 @@ export default function IdeationPage() {
         eyebrow="STAGE 02 · IDEATION"
         title="아이데이션"
         sub="수집된 인풋을 연결해 AI가 30~50개의 단기임대 토픽 아이디어를 확장 생성합니다. 게스트 여정 단계별 클러스터로 묶여 다음 단계 퍼널로 넘어갑니다."
-        actions={[{ label: "주제선정으로 →", primary: true, onClick: () => router.push("/blog/topics") }]}
+        actions={[
+          {
+            label: "주제선정으로 →",
+            primary: true,
+            onClick: () => router.push("/blog/topics"),
+          },
+        ]}
       />
 
       {error && (
@@ -167,13 +245,20 @@ export default function IdeationPage() {
             fontSize: 13,
             display: "flex",
             gap: 8,
-            alignItems: "center",
+            alignItems: "flex-start",
           }}
         >
-          ⚠️ {error}
+          <span>⚠️</span>
+          <span style={{ flex: 1, lineHeight: 1.5 }}>{error}</span>
           <button
             onClick={() => setError(null)}
-            style={{ marginLeft: "auto", fontSize: 12, color: "var(--danger-fg)" }}
+            style={{
+              fontSize: 12,
+              color: "var(--danger-fg)",
+              cursor: "pointer",
+              background: "transparent",
+              border: 0,
+            }}
           >
             ✕
           </button>
@@ -292,7 +377,7 @@ export default function IdeationPage() {
           <div className="bcard__header">
             <div className="bcard__title">AI 토픽 제너레이터</div>
             <span className="bchip" style={{ marginLeft: "auto" }}>
-              Gemini 1.5 Pro · Plott Blog Ideator
+              Gemini 2.5 Flash · Plott Blog Ideator
             </span>
           </div>
           <div style={{ padding: 20 }}>
@@ -310,6 +395,7 @@ export default function IdeationPage() {
             <textarea
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
+              disabled={phase !== "idle" && phase !== "done"}
               style={{
                 width: "100%",
                 minHeight: 110,
@@ -340,10 +426,7 @@ export default function IdeationPage() {
                     onChange={(e) => setTemperature(parseFloat(e.target.value))}
                     style={{ flex: 1 }}
                   />
-                  <span
-                    className="text-mono"
-                    style={{ fontSize: 12, fontWeight: 600, minWidth: 28 }}
-                  >
+                  <span className="text-mono" style={{ fontSize: 12, fontWeight: 600, minWidth: 28 }}>
                     {temperature.toFixed(1)}
                   </span>
                 </div>
@@ -355,6 +438,7 @@ export default function IdeationPage() {
                 <select
                   value={count}
                   onChange={(e) => setCount(parseInt(e.target.value, 10))}
+                  disabled={phase !== "idle" && phase !== "done"}
                   style={{
                     width: "100%",
                     marginTop: 6,
@@ -364,25 +448,60 @@ export default function IdeationPage() {
                     background: "white",
                   }}
                 >
-                  <option value={10}>10개</option>
-                  <option value={20}>20개</option>
-                  <option value={30}>30개</option>
-                  <option value={50}>50개</option>
+                  <option value={10}>10개 (15~25초)</option>
+                  <option value={20}>20개 (20~35초)</option>
+                  <option value={30}>30개 (25~45초)</option>
+                  <option value={50}>50개 (~60초)</option>
                 </select>
               </div>
             </div>
 
             <button
               className="bbtn bbtn--primary bbtn--lg"
-              style={{ width: "100%", marginTop: 16 }}
+              style={{ width: "100%", marginTop: 16, position: "relative", overflow: "hidden" }}
               onClick={handleGenerate}
-              disabled={generating}
+              disabled={phase !== "idle" && phase !== "done"}
             >
-              <Icon name="sparkles" size={15} />
-              {generating ? "생성 중… (10~30초)" : "아이디어 생성"}
+              {phase === "idle" || phase === "done" ? (
+                <>
+                  <Icon name="sparkles" size={15} />
+                  아이디어 생성
+                </>
+              ) : (
+                <>
+                  <Spinner />
+                  <span style={{ marginLeft: 4 }}>{phaseLabel[phase]}</span>
+                </>
+              )}
             </button>
 
-            {lastRunMeta && (
+            {phase !== "idle" && phase !== "done" && (
+              <div style={{ marginTop: 12 }}>
+                <div className="bar-track" style={{ height: 4 }}>
+                  <div
+                    className="bar-fill"
+                    style={{
+                      width: `${progress}%`,
+                      transition: "width 1.2s linear",
+                    }}
+                  />
+                </div>
+                <div
+                  style={{
+                    marginTop: 8,
+                    fontSize: 11,
+                    color: "var(--text-muted)",
+                    display: "flex",
+                    justifyContent: "space-between",
+                  }}
+                >
+                  <span>{phaseLabel[phase]}</span>
+                  <span className="text-mono">{progress}%</span>
+                </div>
+              </div>
+            )}
+
+            {phase === "done" && (
               <div
                 style={{
                   marginTop: 10,
@@ -392,10 +511,18 @@ export default function IdeationPage() {
                   borderRadius: "var(--r-md)",
                   fontSize: 11.5,
                   color: "var(--success-fg)",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
                 }}
               >
-                ✓ {lastRunMeta.count}개 생성 · {lastRunMeta.provider} · {lastRunMeta.model} ·{" "}
-                {(lastRunMeta.durationMs / 1000).toFixed(1)}s
+                ✓ 완료 —
+                {lastRunMeta && (
+                  <>
+                    <b>{lastRunMeta.count}개</b> 생성 · {lastRunMeta.model} ·{" "}
+                    {(lastRunMeta.durationMs / 1000).toFixed(1)}s
+                  </>
+                )}
               </div>
             )}
 
@@ -425,29 +552,59 @@ export default function IdeationPage() {
             <div>
               <div className="bcard__title">아이디어 스트림</div>
               <div className="bcard__sub">
-                {loading ? "불러오는 중…" : `${ideas.length}개 · DB 저장 완료`}
+                {ideas.length > 0
+                  ? `${ideas.length}개${showHistory ? " · 이전 세션 포함" : " · 이번 생성"}`
+                  : "빈 상태"}
               </div>
             </div>
-            <button
-              className="bbtn bbtn--ghost bbtn--sm"
-              style={{ marginLeft: "auto" }}
-              onClick={loadIdeas}
-              disabled={loading}
-            >
-              <Icon name="sort" size={12} /> 새로고침
-            </button>
+            {!showHistory && (
+              <button
+                className="bbtn bbtn--ghost bbtn--sm"
+                style={{ marginLeft: "auto" }}
+                onClick={loadHistory}
+                disabled={historyLoading}
+                title="DB에 저장된 지난 draft 아이디어 가져오기"
+              >
+                <Icon name="clock" size={12} /> {historyLoading ? "로드 중…" : "이전 아이디어"}
+              </button>
+            )}
           </div>
           <div style={{ maxHeight: 560, overflowY: "auto" }}>
-            {!loading && ideas.length === 0 && (
+            {phase !== "idle" && phase !== "done" && ideas.length === 0 && (
               <div
                 style={{
-                  padding: "28px 20px",
+                  padding: "40px 20px",
                   textAlign: "center",
-                  fontSize: 12.5,
                   color: "var(--text-muted)",
+                  fontSize: 13,
                 }}
               >
-                아직 아이디어가 없어요. 좌측에서 인풋 선택하고 <b>아이디어 생성</b>을 눌러보세요.
+                <div style={{ marginBottom: 12 }}>
+                  <Spinner size={28} />
+                </div>
+                {phaseLabel[phase]}
+              </div>
+            )}
+
+            {phase === "idle" && ideas.length === 0 && (
+              <div
+                style={{
+                  padding: "40px 24px",
+                  textAlign: "center",
+                  color: "var(--text-muted)",
+                  fontSize: 12.5,
+                  lineHeight: 1.6,
+                }}
+              >
+                <div style={{ fontSize: 32, marginBottom: 8, opacity: 0.5 }}>✨</div>
+                아직 생성된 주제가 없어요.
+                <br />
+                좌측에서 인풋·페르소나 고르고{" "}
+                <b style={{ color: "var(--brand-600)" }}>아이디어 생성</b>을 눌러보세요.
+                <br />
+                <br />
+                이전에 만든 주제를 불러오려면 상단의{" "}
+                <b style={{ color: "var(--brand-600)" }}>이전 아이디어</b> 버튼을 눌러주세요.
               </div>
             )}
 
@@ -455,7 +612,6 @@ export default function IdeationPage() {
               const clusterLabel = i.cluster ? CLUSTER_LABEL[i.cluster] ?? i.cluster : "—"
               const score = i.fit_score ?? 0
               const hot = isHotSignal(i.signal?.kind)
-              const persona = "—" // 추후 PERSONAS 조인
               return (
                 <div
                   key={i.id}
@@ -514,9 +670,11 @@ export default function IdeationPage() {
                     <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
                       <span className="bchip">#{clusterLabel}</span>
                       <span className="bchip bchip--info">{formatVolume(i.volume)}</span>
-                      <span className="bchip" style={{ color: "var(--text-muted)" }}>
-                        {persona}
-                      </span>
+                      {i.signal?.kind && (
+                        <span className="bchip" style={{ color: "var(--text-muted)" }}>
+                          {i.signal.kind}
+                        </span>
+                      )}
                     </div>
                     {i.rationale && (
                       <div
@@ -531,8 +689,13 @@ export default function IdeationPage() {
                       </div>
                     )}
                   </div>
-                  <button className="bbtn bbtn--ghost bbtn--sm" style={{ padding: "4px 6px" }}>
-                    <Icon name="bookmark" size={12} />
+                  <button
+                    className="bbtn bbtn--ghost bbtn--sm"
+                    style={{ padding: "4px 6px" }}
+                    title="버리기 (숨김)"
+                    onClick={() => discardIdea(i.id)}
+                  >
+                    🗑
                   </button>
                 </div>
               )
@@ -546,8 +709,14 @@ export default function IdeationPage() {
               gap: 8,
             }}
           >
-            <button className="bbtn bbtn--subtle" style={{ flex: 1 }}>
-              전체 선택
+            <button
+              className="bbtn bbtn--subtle"
+              style={{ flex: 1 }}
+              onClick={() => setIdeas([])}
+              disabled={ideas.length === 0}
+              title="현재 스트림 비우기 (DB는 유지)"
+            >
+              화면 비우기
             </button>
             <button
               className="bbtn bbtn--primary"
@@ -569,11 +738,31 @@ export default function IdeationPage() {
           align-items: start;
         }
         @media (max-width: 1180px) {
-          .blog-shell .ideation-grid {
-            grid-template-columns: 1fr;
-          }
+          .blog-shell .ideation-grid { grid-template-columns: 1fr; }
+        }
+        @keyframes ideation-spin {
+          to { transform: rotate(360deg); }
+        }
+        .blog-shell .ideation-spinner {
+          display: inline-block;
+          border: 2px solid rgba(255,255,255,0.3);
+          border-top-color: white;
+          border-radius: 50%;
+          animation: ideation-spin 0.8s linear infinite;
         }
       `}</style>
     </div>
+  )
+}
+
+function Spinner({ size = 14 }: { size?: number }) {
+  return (
+    <span
+      className="ideation-spinner"
+      style={{
+        width: size,
+        height: size,
+      }}
+    />
   )
 }

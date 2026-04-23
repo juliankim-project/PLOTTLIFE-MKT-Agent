@@ -148,12 +148,14 @@ async function callOpenAI(opts: CompletionOptions): Promise<CompletionResult> {
 }
 
 // ── Google Gemini (with retry + model fallback) ───────────────
+// Vercel Hobby 서버리스 함수는 최대 60초 → 총 실행 40초 이내로 제한.
+// 같은 모델 2회 재시도 + 최대 1단계 fallback.
 const GEMINI_FALLBACKS: Record<string, string[]> = {
-  "gemini-2.5-pro": ["gemini-2.5-flash", "gemini-flash-latest", "gemini-2.0-flash"],
-  "gemini-2.5-flash": ["gemini-flash-latest", "gemini-2.0-flash", "gemini-2.0-flash-lite"],
-  "gemini-flash-latest": ["gemini-2.5-flash", "gemini-2.0-flash"],
-  "gemini-pro-latest": ["gemini-2.5-pro", "gemini-flash-latest"],
-  "gemini-2.0-flash": ["gemini-2.0-flash-lite", "gemini-flash-latest"],
+  "gemini-2.5-pro": ["gemini-2.5-flash"],
+  "gemini-2.5-flash": ["gemini-flash-latest"],
+  "gemini-flash-latest": ["gemini-2.0-flash"],
+  "gemini-pro-latest": ["gemini-flash-latest"],
+  "gemini-2.0-flash": ["gemini-2.0-flash-lite"],
 }
 
 const RETRYABLE_GEMINI = /(503|429|overload|unavailable|exceed|rate)/i
@@ -197,8 +199,8 @@ async function callGemini(opts: CompletionOptions): Promise<CompletionResult> {
   let lastErr: unknown = null
   for (let i = 0; i < candidates.length; i++) {
     const modelName = candidates[i]
-    // 같은 모델 3회 재시도 (점증 백오프 0.8s → 1.6s → 3.2s)
-    for (let attempt = 0; attempt < 3; attempt++) {
+    // 같은 모델 2회 재시도 (백오프 0.8s → 1.6s — 총 ~2.5s)
+    for (let attempt = 0; attempt < 2; attempt++) {
       try {
         return await callGeminiOnce(modelName, opts)
       } catch (err) {
@@ -206,16 +208,15 @@ async function callGemini(opts: CompletionOptions): Promise<CompletionResult> {
         const msg = err instanceof Error ? err.message : String(err)
         const retryable = RETRYABLE_GEMINI.test(msg)
         if (!retryable) throw err
-        if (attempt < 2) {
+        if (attempt < 1) {
           await sleep(800 * Math.pow(2, attempt))
           continue
         }
       }
     }
-    // 3회 재시도 실패 → 다음 fallback 모델
     console.warn(`[gemini] ${modelName} exhausted, fallback to ${candidates[i + 1] ?? "(none)"}`)
   }
   throw lastErr instanceof Error
-    ? new Error(`Gemini 모든 모델 실패 (throttle/overload): ${lastErr.message}`)
-    : new Error("Gemini 모든 모델 실패")
+    ? new Error(`Gemini 사용 불가 (혼잡·throttle): ${lastErr.message}`)
+    : new Error("Gemini 사용 불가")
 }
