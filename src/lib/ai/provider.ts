@@ -147,11 +147,25 @@ async function callOpenAI(opts: CompletionOptions): Promise<CompletionResult> {
   }
 }
 
-// ── Google Gemini ──────────────────────────────────────────────
-async function callGemini(opts: CompletionOptions): Promise<CompletionResult> {
+// ── Google Gemini (with retry + model fallback) ───────────────
+const GEMINI_FALLBACKS: Record<string, string[]> = {
+  "gemini-2.5-pro": ["gemini-2.5-flash", "gemini-flash-latest", "gemini-2.0-flash"],
+  "gemini-2.5-flash": ["gemini-flash-latest", "gemini-2.0-flash", "gemini-2.0-flash-lite"],
+  "gemini-flash-latest": ["gemini-2.5-flash", "gemini-2.0-flash"],
+  "gemini-pro-latest": ["gemini-2.5-pro", "gemini-flash-latest"],
+  "gemini-2.0-flash": ["gemini-2.0-flash-lite", "gemini-flash-latest"],
+}
+
+const RETRYABLE_GEMINI = /(503|429|overload|unavailable|exceed|rate)/i
+
+async function sleep(ms: number) {
+  return new Promise((r) => setTimeout(r, ms))
+}
+
+async function callGeminiOnce(modelName: string, opts: CompletionOptions): Promise<CompletionResult> {
   const client = gemini()
   const model = client.getGenerativeModel({
-    model: opts.model,
+    model: modelName,
     systemInstruction: opts.system,
     generationConfig: {
       temperature: opts.temperature,
@@ -159,7 +173,6 @@ async function callGemini(opts: CompletionOptions): Promise<CompletionResult> {
       responseMimeType: opts.json ? "application/json" : undefined,
     },
   })
-  // Gemini는 system-separated; user/assistant 쌍만
   const history = opts.messages.slice(0, -1).map((m) => ({
     role: m.role === "assistant" ? "model" : "user",
     parts: [{ text: m.content }],
@@ -172,9 +185,37 @@ async function callGemini(opts: CompletionOptions): Promise<CompletionResult> {
   return {
     text,
     provider: "google",
-    model: opts.model,
+    model: modelName,
     inputTokens: usage?.promptTokenCount,
     outputTokens: usage?.candidatesTokenCount,
     raw: res,
   }
+}
+
+async function callGemini(opts: CompletionOptions): Promise<CompletionResult> {
+  const candidates = [opts.model, ...(GEMINI_FALLBACKS[opts.model] ?? [])]
+  let lastErr: unknown = null
+  for (let i = 0; i < candidates.length; i++) {
+    const modelName = candidates[i]
+    // 같은 모델 3회 재시도 (점증 백오프 0.8s → 1.6s → 3.2s)
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        return await callGeminiOnce(modelName, opts)
+      } catch (err) {
+        lastErr = err
+        const msg = err instanceof Error ? err.message : String(err)
+        const retryable = RETRYABLE_GEMINI.test(msg)
+        if (!retryable) throw err
+        if (attempt < 2) {
+          await sleep(800 * Math.pow(2, attempt))
+          continue
+        }
+      }
+    }
+    // 3회 재시도 실패 → 다음 fallback 모델
+    console.warn(`[gemini] ${modelName} exhausted, fallback to ${candidates[i + 1] ?? "(none)"}`)
+  }
+  throw lastErr instanceof Error
+    ? new Error(`Gemini 모든 모델 실패 (throttle/overload): ${lastErr.message}`)
+    : new Error("Gemini 모든 모델 실패")
 }

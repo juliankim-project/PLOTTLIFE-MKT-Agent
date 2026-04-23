@@ -6,6 +6,6 @@
 
 update agents
    set provider = 'google',
-       model    = 'gemini-1.5-pro',
+       model    = 'gemini-2.5-flash',  -- 2026.04 기준 무료 티어 최적 모델
        updated_at = now()
  where is_active = true;
