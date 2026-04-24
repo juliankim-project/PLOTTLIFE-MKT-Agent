@@ -80,6 +80,7 @@ export default function ReviewPage() {
   const [loadingReview, setLoadingReview] = useState(false)
   const [analyzing, setAnalyzing] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [completedAt, setCompletedAt] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [quality, setQuality] = useState<"flash" | "pro">("flash")
 
@@ -158,11 +159,12 @@ export default function ReviewPage() {
     }
   }
 
-  /* 저장 — draft status approved + 콘텐츠 관리로 이동 */
-  const handleSave = async () => {
+  /* 검수 완료 — status approved · 이 페이지에 머무름 · 성공 피드백 · 다음 초안으로 */
+  const handleComplete = async () => {
     if (!selectedId) return
     setSaving(true)
     setError(null)
+    setCompletedAt(null)
     try {
       const j = await safeFetchJson<{ ok: boolean; error?: string }>(
         `/api/drafts/${selectedId}`,
@@ -172,10 +174,23 @@ export default function ReviewPage() {
           body: JSON.stringify({ status: "approved" }),
         }
       )
-      if (!j.ok) throw new Error(j.error ?? "저장 실패")
-      router.push("/blog/contents")
+      if (!j.ok) throw new Error(j.error ?? "검수 완료 실패")
+      setCompletedAt(
+        new Date().toLocaleTimeString("ko-KR", {
+          hour: "2-digit",
+          minute: "2-digit",
+        })
+      )
+      /* drafts 리스트 재로딩 — approved 된 건 자동 사라짐, 다음 초안 자동 선택 */
+      const completedId = selectedId
+      setSelectedId(null)
+      await loadDrafts()
+      /* 5초 후 완료 배지 페이드아웃 */
+      setTimeout(() => setCompletedAt(null), 5000)
+      void completedId // 추후 로그 재참조 대비
     } catch (e) {
-      setError(e instanceof Error ? e.message : "저장 실패")
+      setError(e instanceof Error ? e.message : "검수 완료 실패")
+    } finally {
       setSaving(false)
     }
   }
@@ -193,14 +208,18 @@ export default function ReviewPage() {
       <PageHeader
         eyebrow="STAGE 05 · REVIEW"
         title="검수"
-        sub="AI 에이전트가 SEO·팩트·출처·톤을 콘텐츠 맞춤으로 분석합니다. 결과 확인 후 저장하면 콘텐츠 관리로 넘어갑니다."
+        sub="AI 에이전트가 SEO·팩트·출처·톤을 콘텐츠 맞춤으로 분석합니다. '검수 완료'를 누르면 콘텐츠 관리에 쌓이고, 이 화면에서 다음 초안을 이어 검수할 수 있어요."
         actions={[
           { label: "← 콘텐츠 제작", onClick: () => router.push("/blog/write") },
           {
-            label: saving ? "저장 중…" : "💾 저장하기 → 콘텐츠 관리",
-            primary: true,
+            label: saving ? "완료 중…" : "✅ 검수 완료",
             icon: "check",
-            onClick: handleSave,
+            onClick: handleComplete,
+          },
+          {
+            label: "콘텐츠 관리 →",
+            primary: true,
+            onClick: () => router.push("/blog/contents"),
           },
         ]}
       />
@@ -210,6 +229,34 @@ export default function ReviewPage() {
           <span>⚠️</span>
           <span style={{ flex: 1 }}>{error}</span>
           <button onClick={() => setError(null)} style={{ background: "transparent", border: 0, color: "inherit", cursor: "pointer" }}>✕</button>
+        </div>
+      )}
+
+      {completedAt && (
+        <div
+          style={{
+            marginBottom: 14,
+            padding: "10px 14px",
+            background: "var(--success-bg)",
+            border: "1px solid var(--success-border)",
+            color: "var(--success-fg)",
+            borderRadius: "var(--r-md)",
+            fontSize: 13,
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+          }}
+        >
+          <span>✅</span>
+          <span style={{ flex: 1 }}>
+            {completedAt} 검수 완료 — <b>콘텐츠 관리</b>에 저장됐어요. 다음 초안으로 이어가세요.
+          </span>
+          <Link
+            href="/blog/contents"
+            style={{ color: "var(--success-fg)", fontWeight: 600, textDecoration: "underline" }}
+          >
+            관리로 이동 →
+          </Link>
         </div>
       )}
 
@@ -560,9 +607,9 @@ export default function ReviewPage() {
 
           <div className="bcard">
             <div className="bcard__body" style={{ fontSize: 12, color: "var(--text-secondary)", lineHeight: 1.6 }}>
-              💡 저장하기는 상단 버튼을 쓰세요.
+              💡 상단 <b>✅ 검수 완료</b>를 누르면 이 화면에 머물며 다음 초안으로 이어갈 수 있어요.
               <br />
-              승인된 콘텐츠는 <Link href="/blog/contents" style={{ color: "var(--brand-600)", fontWeight: 600 }}>콘텐츠 관리</Link>로 이동합니다.
+              완료된 콘텐츠는 <Link href="/blog/contents" style={{ color: "var(--brand-600)", fontWeight: 600 }}>콘텐츠 관리</Link>에 쌓입니다.
             </div>
           </div>
         </div>
