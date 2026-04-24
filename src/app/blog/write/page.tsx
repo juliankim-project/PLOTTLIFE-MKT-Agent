@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { Icon, PageHeader } from "../_ui"
 
 interface TopicItem {
@@ -34,6 +35,7 @@ async function safeFetchJson<T>(input: RequestInfo): Promise<T> {
 }
 
 export default function WriteListPage() {
+  const router = useRouter()
   const [topics, setTopics] = useState<TopicItem[]>([])
   const [drafts, setDrafts] = useState<DraftItem[]>([])
   const [loading, setLoading] = useState(true)
@@ -70,6 +72,10 @@ export default function WriteListPage() {
         eyebrow="STAGE 04 · CREATE"
         title="콘텐츠 제작"
         sub="브리프 작성에서 확정된 브리프 1개를 선택하면 Copywriter 에이전트가 플라트 블로그 스타일로 본문을 작성합니다."
+        actions={[
+          { label: "← 브리프 작성", onClick: () => router.push("/blog/topics") },
+          { label: "검수로 →", primary: true, onClick: () => router.push("/blog/review") },
+        ]}
       />
 
       {error && (
