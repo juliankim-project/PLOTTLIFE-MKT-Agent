@@ -17,12 +17,12 @@ export default function PublishPage() {
   return (
     <div className="bpage fade-up">
       <PageHeader
-        eyebrow="STAGE 06 · PUBLISH"
-        title="발행"
-        sub="오피셜 블로그·네이버·뉴스레터·소셜·Medium 영문으로 채널별 포맷을 변환해 예약·발행합니다."
+        eyebrow="STAGE 07 · PUBLISH"
+        title="발행관리"
+        sub="오피셜 블로그·네이버·뉴스레터·소셜·Medium 영문 채널별 On/Off 와 발행 타이밍을 관리합니다. 개별 콘텐츠의 발행 세팅은 콘텐츠 관리에서 하세요."
         actions={[
           { label: "← 콘텐츠 관리", onClick: () => router.push("/blog/contents") },
-          { label: "지금 발행", primary: true, icon: "send" },
+          { label: "성과분석으로 →", primary: true, onClick: () => router.push("/blog/analyze") },
         ]}
       />
 
