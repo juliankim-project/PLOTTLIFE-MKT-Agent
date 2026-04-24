@@ -405,7 +405,12 @@ export default function WriteEditor() {
                   background: "white",
                 }}
               >
-                <MarkdownPreview body={body} title={topic.title} heroUrl={draft?.hero_image_url} />
+                <MarkdownPreview
+                  body={body}
+                  title={topic.title}
+                  heroUrl={draft?.hero_image_url}
+                  generatingImages={generatingImages}
+                />
               </div>
             </div>
           ) : (
@@ -549,35 +554,35 @@ function Spinner() {
   return <span className="write-spinner" />
 }
 
-/** 매우 가벼운 Markdown 미리보기 — H1~H3, **bold**, - 리스트, ![img](url), <!-- IMAGE_SLOT_x --> */
+/**
+ * Markdown 미리보기 — 본문 시각 요소 지원.
+ * - H1~H3, **bold**, `code`, [link](url)
+ * - 리스트(- / *), 체크리스트(- [ ])
+ * - 이미지 ![alt](url) + AI 워터마크 오버레이
+ * - IMAGE_SLOT 플레이스홀더 + 생성 중 스켈레톤
+ * - 테이블 (| col | col |)
+ * - 블록쿼트 (>) · 콜아웃 (> 💡/⚠️/ℹ️/✅)
+ * - 구분선 (---)
+ */
 function MarkdownPreview({
   body,
   title,
   heroUrl,
+  generatingImages = false,
 }: {
   body: string
   title: string
   heroUrl?: string | null
+  generatingImages?: boolean
 }) {
   const lines = body.split("\n")
   const elements: React.ReactNode[] = []
 
+  /* Hero image 영역 */
   if (heroUrl) {
-    elements.push(
-      // eslint-disable-next-line @next/next/no-img-element
-      <img
-        key="hero"
-        src={heroUrl}
-        alt={title}
-        style={{
-          width: "100%",
-          aspectRatio: "16 / 9",
-          objectFit: "cover",
-          borderRadius: 12,
-          marginBottom: 16,
-        }}
-      />
-    )
+    elements.push(<AiImage key="hero" src={heroUrl} alt={title} hero />)
+  } else if (generatingImages) {
+    elements.push(<ImageSkeleton key="hero-gen" hero label="썸네일" />)
   }
 
   elements.push(
@@ -587,82 +592,270 @@ function MarkdownPreview({
   )
 
   let listItems: string[] = []
+  let listKind: "ul" | "checklist" = "ul"
+  let tableRows: string[][] | null = null
+  let tableAlign: Array<"left" | "center" | "right"> | null = null
+  let blockquoteLines: string[] = []
+
   const flushList = (idx: number) => {
     if (listItems.length > 0) {
-      elements.push(
-        <ul key={`ul-${idx}`} style={{ paddingLeft: 20, marginBottom: 12 }}>
-          {listItems.map((item, j) => (
-            <li key={j} style={{ marginBottom: 4 }}>
-              {formatInline(item)}
-            </li>
-          ))}
-        </ul>
-      )
+      if (listKind === "checklist") {
+        elements.push(
+          <div key={`ck-${idx}`} style={{ margin: "10px 0 14px" }}>
+            {listItems.map((item, j) => {
+              const m = item.match(/^\[([ xX])\]\s*(.*)$/)
+              const checked = m ? /[xX]/.test(m[1]) : false
+              const text = m ? m[2] : item
+              return (
+                <div
+                  key={j}
+                  style={{ display: "flex", gap: 8, alignItems: "flex-start", padding: "3px 0", fontSize: 13.5 }}
+                >
+                  <span
+                    style={{
+                      display: "inline-grid",
+                      placeItems: "center",
+                      width: 16,
+                      height: 16,
+                      marginTop: 3,
+                      flexShrink: 0,
+                      border: `1.5px solid ${checked ? "var(--brand-600)" : "var(--border-strong)"}`,
+                      background: checked ? "var(--brand-600)" : "white",
+                      borderRadius: 3,
+                      color: "white",
+                      fontSize: 10,
+                      lineHeight: 1,
+                    }}
+                  >
+                    {checked ? "✓" : ""}
+                  </span>
+                  <span style={{ flex: 1, color: "var(--text-secondary)", textDecoration: checked ? "line-through" : "none" }}>
+                    {formatInline(text)}
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+        )
+      } else {
+        elements.push(
+          <ul key={`ul-${idx}`} style={{ paddingLeft: 20, marginBottom: 12 }}>
+            {listItems.map((item, j) => (
+              <li key={j} style={{ marginBottom: 4 }}>
+                {formatInline(item)}
+              </li>
+            ))}
+          </ul>
+        )
+      }
       listItems = []
+      listKind = "ul"
     }
   }
+
+  const flushTable = (idx: number) => {
+    if (tableRows && tableRows.length > 0) {
+      const [head, ...rest] = tableRows
+      elements.push(
+        <div key={`tbl-${idx}`} style={{ overflowX: "auto", margin: "14px 0" }}>
+          <table
+            style={{
+              width: "100%",
+              borderCollapse: "collapse",
+              fontSize: 13,
+              border: "1px solid var(--border-default)",
+              borderRadius: 6,
+              overflow: "hidden",
+            }}
+          >
+            <thead>
+              <tr style={{ background: "var(--bg-subtle)" }}>
+                {head.map((c, j) => (
+                  <th
+                    key={j}
+                    style={{
+                      padding: "9px 12px",
+                      textAlign: tableAlign?.[j] ?? "left",
+                      fontWeight: 700,
+                      borderBottom: "2px solid var(--border-default)",
+                      borderRight: j < head.length - 1 ? "1px solid var(--border-subtle)" : undefined,
+                    }}
+                  >
+                    {formatInline(c)}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rest.map((row, r) => (
+                <tr key={r} style={{ borderBottom: "1px solid var(--border-subtle)" }}>
+                  {row.map((c, j) => (
+                    <td
+                      key={j}
+                      style={{
+                        padding: "8px 12px",
+                        textAlign: tableAlign?.[j] ?? "left",
+                        borderRight: j < row.length - 1 ? "1px solid var(--border-subtle)" : undefined,
+                      }}
+                    >
+                      {formatInline(c)}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )
+      tableRows = null
+      tableAlign = null
+    }
+  }
+
+  const flushQuote = (idx: number) => {
+    if (blockquoteLines.length > 0) {
+      const joined = blockquoteLines.join(" ").trim()
+      const callout = detectCallout(joined)
+      elements.push(<Callout key={`q-${idx}`} kind={callout.kind} text={callout.text} />)
+      blockquoteLines = []
+    }
+  }
+
+  const flushAll = (i: number) => {
+    flushList(i)
+    flushTable(i)
+    flushQuote(i)
+  }
+
+  const parseTableRow = (s: string): string[] =>
+    s
+      .replace(/^\||\|$/g, "")
+      .split("|")
+      .map((c) => c.trim())
 
   lines.forEach((raw, i) => {
     const line = raw.trimEnd()
 
-    // IMAGE_SLOT 주석 — 아직 이미지 생성 안된 상태
+    // IMAGE_SLOT 주석
     const slotMatch = line.match(/<!--\s*IMAGE_SLOT_(\d+)\s*:\s*(.*?)\s*-->/)
     if (slotMatch) {
-      flushList(i)
-      elements.push(
-        <div
-          key={i}
-          style={{
-            border: "1px dashed var(--brand-300)",
-            borderRadius: 10,
-            padding: "24px 16px",
-            textAlign: "center",
-            background: "var(--brand-50)",
-            margin: "14px 0",
-            color: "var(--brand-700)",
-            fontSize: 12.5,
-          }}
-        >
-          🖼 IMAGE_SLOT_{slotMatch[1]} · {slotMatch[2]}
-          <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>
-            상단 <b>이미지 생성</b> 버튼을 누르면 실제 이미지로 바뀝니다
+      flushAll(i)
+      if (generatingImages) {
+        elements.push(
+          <ImageSkeleton
+            key={i}
+            label={`IMAGE_SLOT_${slotMatch[1]}`}
+            hint={slotMatch[2]}
+          />
+        )
+      } else {
+        elements.push(
+          <div
+            key={i}
+            style={{
+              border: "1px dashed var(--brand-300)",
+              borderRadius: 10,
+              padding: "24px 16px",
+              textAlign: "center",
+              background: "var(--brand-50)",
+              margin: "14px 0",
+              color: "var(--brand-700)",
+              fontSize: 12.5,
+            }}
+          >
+            🖼 IMAGE_SLOT_{slotMatch[1]} · {slotMatch[2]}
+            <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>
+              상단 <b>🖼 이미지 생성</b> 버튼을 누르면 실제 이미지로 바뀝니다
+            </div>
           </div>
-        </div>
-      )
+        )
+      }
       return
     }
 
     // ![alt](url) 단독 라인
     const imgMatch = line.match(/^!\[([^\]]*)\]\((https?:\/\/[^)]+)\)$/)
     if (imgMatch) {
+      flushAll(i)
+      elements.push(<AiImage key={i} src={imgMatch[2]} alt={imgMatch[1]} />)
+      return
+    }
+
+    // 테이블 — 라인이 | 로 시작하면 수집
+    if (line.trim().startsWith("|") && line.includes("|")) {
       flushList(i)
+      flushQuote(i)
+      const row = parseTableRow(line.trim())
+      // 정렬 헤더 (| --- | :---: | ---: |)
+      const isAlign = row.every((c) => /^:?-+:?$/.test(c))
+      if (isAlign) {
+        tableAlign = row.map((c) => {
+          if (c.startsWith(":") && c.endsWith(":")) return "center"
+          if (c.endsWith(":")) return "right"
+          return "left"
+        })
+      } else {
+        if (!tableRows) tableRows = []
+        tableRows.push(row)
+      }
+      return
+    }
+
+    // 블록쿼트 / 콜아웃 — >
+    if (line.startsWith("> ")) {
+      flushList(i)
+      flushTable(i)
+      blockquoteLines.push(line.slice(2))
+      return
+    }
+
+    // 구분선
+    if (line.trim() === "---" || line.trim() === "***") {
+      flushAll(i)
       elements.push(
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
+        <hr
           key={i}
-          src={imgMatch[2]}
-          alt={imgMatch[1]}
           style={{
-            width: "100%",
-            borderRadius: 10,
-            margin: "14px 0",
-            aspectRatio: "16 / 9",
-            objectFit: "cover",
+            border: 0,
+            borderTop: "1px solid var(--border-subtle)",
+            margin: "20px 0",
           }}
         />
       )
       return
     }
 
+    // 체크리스트 (- [x] / - [ ])
+    if (/^[-*]\s*\[[ xX]\]/.test(line)) {
+      flushTable(i)
+      flushQuote(i)
+      if (listKind !== "checklist" && listItems.length > 0) flushList(i)
+      listKind = "checklist"
+      listItems.push(line.replace(/^[-*]\s*/, ""))
+      return
+    }
+
+    // 일반 리스트
+    if (line.startsWith("- ") || line.startsWith("* ")) {
+      flushTable(i)
+      flushQuote(i)
+      if (listKind !== "ul" && listItems.length > 0) flushList(i)
+      listKind = "ul"
+      listItems.push(line.slice(2))
+      return
+    }
+
     if (line.startsWith("### ")) {
-      flushList(i)
+      flushAll(i)
       elements.push(
         <h3 key={i} style={{ fontSize: 15, fontWeight: 700, marginTop: 18, marginBottom: 8 }}>
           {formatInline(line.slice(4))}
         </h3>
       )
-    } else if (line.startsWith("## ")) {
-      flushList(i)
+      return
+    }
+    if (line.startsWith("## ")) {
+      flushAll(i)
       elements.push(
         <h2
           key={i}
@@ -677,21 +870,199 @@ function MarkdownPreview({
           {formatInline(line.slice(3))}
         </h2>
       )
-    } else if (line.startsWith("- ") || line.startsWith("* ")) {
-      listItems.push(line.slice(2))
-    } else if (line.trim() === "") {
-      flushList(i)
-    } else {
-      flushList(i)
-      elements.push(
-        <p key={i} style={{ marginBottom: 10, color: "var(--text-secondary)" }}>
-          {formatInline(line)}
-        </p>
-      )
+      return
     }
+    if (line.trim() === "") {
+      flushAll(i)
+      return
+    }
+    flushAll(i)
+    elements.push(
+      <p key={i} style={{ marginBottom: 10, color: "var(--text-secondary)" }}>
+        {formatInline(line)}
+      </p>
+    )
   })
-  flushList(lines.length)
+  flushAll(lines.length)
   return <>{elements}</>
+}
+
+/* ─── 시각 요소 컴포넌트 ─── */
+
+function AiImage({
+  src,
+  alt,
+  hero,
+}: {
+  src: string
+  alt: string
+  hero?: boolean
+}) {
+  return (
+    <div
+      style={{
+        position: "relative",
+        width: "100%",
+        margin: hero ? "0 0 16px" : "14px 0",
+      }}
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={src}
+        alt={alt}
+        style={{
+          width: "100%",
+          aspectRatio: "16 / 9",
+          objectFit: "cover",
+          borderRadius: 12,
+          display: "block",
+        }}
+      />
+      <span
+        style={{
+          position: "absolute",
+          right: 8,
+          bottom: 8,
+          width: 24,
+          height: 24,
+          display: "grid",
+          placeItems: "center",
+          background: "rgba(255, 255, 255, 0.88)",
+          borderRadius: "50%",
+          boxShadow: "0 1px 4px rgba(0,0,0,0.18)",
+          backdropFilter: "blur(4px)",
+          pointerEvents: "none",
+        }}
+        aria-label="AI generated by Gemini"
+      >
+        <GeminiMark size={14} />
+      </span>
+    </div>
+  )
+}
+
+function GeminiMark({ size = 14 }: { size?: number }) {
+  /* 4-point sparkle star with Gemini-style multi-color gradient */
+  const id = "gm-" + size
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+      style={{ display: "block" }}
+    >
+      <defs>
+        <linearGradient id={id} x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%"   stopColor="#4285F4" />
+          <stop offset="35%"  stopColor="#9B72CB" />
+          <stop offset="70%"  stopColor="#D96570" />
+          <stop offset="100%" stopColor="#F9AB00" />
+        </linearGradient>
+      </defs>
+      <path
+        d="M12 1 L14 10 L23 12 L14 14 L12 23 L10 14 L1 12 L10 10 Z"
+        fill={`url(#${id})`}
+      />
+    </svg>
+  )
+}
+
+function ImageSkeleton({
+  label,
+  hint,
+  hero,
+}: {
+  label: string
+  hint?: string
+  hero?: boolean
+}) {
+  return (
+    <div
+      style={{
+        position: "relative",
+        width: "100%",
+        aspectRatio: "16 / 9",
+        margin: hero ? "0 0 16px" : "14px 0",
+        borderRadius: 12,
+        overflow: "hidden",
+        background:
+          "linear-gradient(90deg, #eef0ff 0%, #f5f3ff 25%, #fdf4ff 50%, #f5f3ff 75%, #eef0ff 100%)",
+        backgroundSize: "200% 100%",
+        animation: "skeleton-slide 1.6s ease-in-out infinite",
+        display: "grid",
+        placeItems: "center",
+        border: "1px solid var(--brand-200)",
+      }}
+    >
+      <div style={{ textAlign: "center", color: "var(--brand-700)" }}>
+        <div style={{ fontSize: 28, marginBottom: 6, animation: "skeleton-pulse 1.4s ease-in-out infinite" }}>
+          🎨
+        </div>
+        <div style={{ fontSize: 13, fontWeight: 700 }}>AI가 그리는 중…</div>
+        <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
+          {label}
+          {hint ? ` · ${hint}` : ""}
+        </div>
+      </div>
+      <style jsx>{`
+        @keyframes skeleton-slide {
+          0% { background-position: 100% 0; }
+          100% { background-position: -100% 0; }
+        }
+        @keyframes skeleton-pulse {
+          0%, 100% { transform: scale(1); opacity: 1; }
+          50% { transform: scale(1.08); opacity: 0.7; }
+        }
+      `}</style>
+    </div>
+  )
+}
+
+function detectCallout(s: string): { kind: "tip" | "warn" | "info" | "ok" | "quote"; text: string } {
+  if (/^(💡|\*\*(팁|Tip)\*\*|팁:)/.test(s)) return { kind: "tip", text: s.replace(/^💡\s*/, "") }
+  if (/^(⚠️|❌|\*\*(주의|경고)\*\*|주의:|경고:)/.test(s)) return { kind: "warn", text: s.replace(/^⚠️\s*|^❌\s*/, "") }
+  if (/^(ℹ️|\*\*정보\*\*|정보:)/.test(s)) return { kind: "info", text: s.replace(/^ℹ️\s*/, "") }
+  if (/^(✅|\*\*체크\*\*|요약:)/.test(s)) return { kind: "ok", text: s.replace(/^✅\s*/, "") }
+  return { kind: "quote", text: s }
+}
+
+function Callout({
+  kind,
+  text,
+}: {
+  kind: "tip" | "warn" | "info" | "ok" | "quote"
+  text: string
+}) {
+  const palette: Record<typeof kind, { bg: string; border: string; fg: string; icon: string; label: string }> = {
+    tip:   { bg: "#fffbeb", border: "#fde68a", fg: "#92400e", icon: "💡", label: "팁" },
+    warn:  { bg: "#fef2f2", border: "#fecaca", fg: "#991b1b", icon: "⚠️", label: "주의" },
+    info:  { bg: "#eff6ff", border: "#bfdbfe", fg: "#1e40af", icon: "ℹ️", label: "정보" },
+    ok:    { bg: "#ecfdf5", border: "#a7f3d0", fg: "#065f46", icon: "✅", label: "체크" },
+    quote: { bg: "#f9fafb", border: "#e5e7eb", fg: "#374151", icon: "",   label: "" },
+  }
+  const p = palette[kind]
+  return (
+    <div
+      style={{
+        padding: "12px 14px",
+        background: p.bg,
+        border: `1px solid ${p.border}`,
+        borderLeft: `4px solid ${p.fg}`,
+        borderRadius: 6,
+        margin: "12px 0",
+        display: "flex",
+        gap: 10,
+        alignItems: "flex-start",
+        color: p.fg,
+        fontSize: 13,
+        lineHeight: 1.6,
+      }}
+    >
+      {p.icon && <span style={{ fontSize: 16, flexShrink: 0, marginTop: 1 }}>{p.icon}</span>}
+      <div style={{ flex: 1 }}>{formatInline(text)}</div>
+    </div>
+  )
 }
 
 function formatInline(s: string): React.ReactNode {
