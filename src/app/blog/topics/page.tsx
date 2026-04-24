@@ -149,6 +149,10 @@ export default function TopicsPage() {
         eyebrow="STAGE 03 · BRIEF"
         title="브리프 작성"
         sub="아이데이션에서 선정된 주제 중 이번 라운드에 작성할 1개를 고르면, Content Strategist가 아웃라인·페르소나·KPI·CTA 포인트를 담은 상세 브리프를 만듭니다. 다음 단계(콘텐츠 제작)의 입력이 됩니다."
+        actions={[
+          { label: "← 아이데이션", onClick: () => router.push("/blog/ideation") },
+          { label: "콘텐츠 제작으로 →", primary: true, onClick: () => router.push("/blog/write") },
+        ]}
       />
 
       {error && (

@@ -351,6 +351,10 @@ function IdeationPage() {
         sub="목적·세그먼트·상황 3축으로 주제를 생성하고, 여정×목적 매트릭스에서 이번 라운드에 쓸 주제를 선정합니다."
         actions={[
           {
+            label: "← 키워드 트렌드",
+            onClick: () => router.push("/blog/research"),
+          },
+          {
             label: "브리프 작성으로 →",
             primary: true,
             onClick: () => router.push("/blog/topics"),

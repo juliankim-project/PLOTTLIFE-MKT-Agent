@@ -1,5 +1,6 @@
 "use client"
 
+import { useRouter } from "next/navigation"
 import { Icon, PageHeader, Toggle } from "../_ui"
 
 const CHANNELS = [
@@ -12,13 +13,17 @@ const CHANNELS = [
 ]
 
 export default function PublishPage() {
+  const router = useRouter()
   return (
     <div className="bpage fade-up">
       <PageHeader
         eyebrow="STAGE 06 · PUBLISH"
         title="발행"
         sub="오피셜 블로그·네이버·뉴스레터·소셜·Medium 영문으로 채널별 포맷을 변환해 예약·발행합니다."
-        actions={[{ label: "지금 발행", primary: true, icon: "send" }]}
+        actions={[
+          { label: "← 콘텐츠 관리", onClick: () => router.push("/blog/contents") },
+          { label: "지금 발행", primary: true, icon: "send" },
+        ]}
       />
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 380px", gap: 14 }}>
