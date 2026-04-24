@@ -24,6 +24,7 @@ export type StageId =
   | "topics"
   | "write"
   | "review"
+  | "contents"
   | "publish"
   | "analyze"
 
@@ -123,26 +124,40 @@ export const STAGES: Stage[] = [
     inputs: ["초안", "체크리스트", "승인 규칙"],
     outputs: ["승인본"],
     kpi: "검수 대기",
-    kpiValue: "2",
+    kpiValue: "—",
     href: "/blog/review",
   },
   {
-    id: "publish",
+    id: "contents",
     order: 6,
-    label: "발행",
+    label: "콘텐츠 관리",
+    en: "Contents",
+    color: "var(--stage-publish)",
+    icon: "bookmark",
+    desc: "검수에서 저장된 콘텐츠를 관리합니다. 편집·재검토·발행 세팅을 여기서 처리합니다.",
+    inputs: ["승인본", "편집 이력"],
+    outputs: ["저장됨", "발행예정", "발행완료"],
+    kpi: "저장된 콘텐츠",
+    kpiValue: "—",
+    href: "/blog/contents",
+  },
+  {
+    id: "publish",
+    order: 7,
+    label: "발행관리",
     en: "Publish",
     color: "var(--stage-publish)",
     icon: "send",
-    desc: "오피셜 블로그·뉴스레터·소셜·Medium 영문 채널로 변환해 예약/발행합니다.",
-    inputs: ["승인본", "채널 계정", "스케줄"],
+    desc: "오피셜 블로그·뉴스레터·소셜·Medium 영문 채널별 발행 타이밍과 On/Off 를 관리합니다.",
+    inputs: ["채널 계정", "스케줄", "발행예정 콘텐츠"],
     outputs: ["발행물", "메타 태그"],
-    kpi: "예약",
-    kpiValue: "4",
+    kpi: "활성 채널",
+    kpiValue: "—",
     href: "/blog/publish",
   },
   {
     id: "analyze",
-    order: 7,
+    order: 8,
     label: "성과분석",
     en: "Analyze",
     color: "var(--stage-analyze)",
@@ -151,7 +166,7 @@ export const STAGES: Stage[] = [
     inputs: ["GA4·Search Console", "네이버 웹마스터", "플라트 예약 로그"],
     outputs: ["대시보드", "학습 피드백"],
     kpi: "이번 달 PV",
-    kpiValue: "182K",
+    kpiValue: "—",
     href: "/blog/analyze",
   },
 ]

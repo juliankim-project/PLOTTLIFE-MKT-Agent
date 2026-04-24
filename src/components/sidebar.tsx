@@ -73,9 +73,9 @@ const navItems: NavItem[] = [
       { kind: "leaf", label: "03 · 브리프 작성", href: "/blog/topics" },
       { kind: "leaf", label: "04 · 콘텐츠 제작", href: "/blog/write" },
       { kind: "leaf", label: "05 · 검수", href: "/blog/review" },
-      { kind: "leaf", label: "📚 콘텐츠 관리", href: "/blog/contents" },
-      { kind: "leaf", label: "06 · 발행", href: "/blog/publish" },
-      { kind: "leaf", label: "07 · 성과분석", href: "/blog/analyze" },
+      { kind: "leaf", label: "06 · 콘텐츠 관리", href: "/blog/contents" },
+      { kind: "leaf", label: "07 · 발행관리", href: "/blog/publish" },
+      { kind: "leaf", label: "08 · 성과분석", href: "/blog/analyze" },
     ],
   },
 ]

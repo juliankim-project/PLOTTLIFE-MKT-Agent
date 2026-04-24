@@ -132,10 +132,17 @@ export default function ContentsEditor() {
   const charNoSpace = body.replace(/\s/g, "").length
   const isPublished = draft.status === "published"
 
+  const statusLabel =
+    draft.status === "published"
+      ? "발행완료"
+      : draft.status === "scheduled"
+      ? "발행예정"
+      : "저장됨"
+
   return (
     <div className="bpage fade-up">
       <PageHeader
-        eyebrow={`콘텐츠 편집 · ${draft.status === "published" ? "발행됨" : "저장됨"}`}
+        eyebrow={`콘텐츠 편집 · ${statusLabel}`}
         title={title || "(제목 없음)"}
         sub={
           draft.primary_keyword
