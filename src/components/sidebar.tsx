@@ -68,10 +68,10 @@ const navItems: NavItem[] = [
     match: (p) => p.startsWith("/blog"),
     items: [
       { kind: "leaf", label: "여정 맵", href: "/blog" },
-      { kind: "leaf", label: "01 · 리서치", href: "/blog/research" },
+      { kind: "leaf", label: "01 · 키워드 트렌드", href: "/blog/research" },
       { kind: "leaf", label: "02 · 아이데이션", href: "/blog/ideation" },
-      { kind: "leaf", label: "03 · 주제선정", href: "/blog/topics" },
-      { kind: "leaf", label: "04 · 작성", href: "/blog/write" },
+      { kind: "leaf", label: "03 · 브리프 작성", href: "/blog/topics" },
+      { kind: "leaf", label: "04 · 콘텐츠 제작", href: "/blog/write" },
       { kind: "leaf", label: "05 · 검수", href: "/blog/review" },
       { kind: "leaf", label: "06 · 발행", href: "/blog/publish" },
       { kind: "leaf", label: "07 · 성과분석", href: "/blog/analyze" },

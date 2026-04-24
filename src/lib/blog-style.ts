@@ -94,7 +94,7 @@ export const PLOTT_BLOG_STYLE = {
  * 도입부·어투가 "독자가 지금 어디에 있는지"와 일치해야 한다.
  */
 export const JOURNEY_STAGE_POV: Record<
-  "consider" | "prepare" | "arrive" | "settle" | "live" | "explore" | "change",
+  "consider" | "prepare" | "arrive" | "settle" | "live" | "explore" | "wrapup" | "change",
   {
     label: string
     readerState: string
@@ -187,13 +187,28 @@ export const JOURNEY_STAGE_POV: Record<
       "도착 첫날",
     ],
   },
-  change: {
-    label: "🔄 Change · 연장·이사·재계약·귀국 고민",
-    readerState: "독자는 체류 후반. 비자 연장 or 이사 or 귀국을 고민하는 시점. 학기말·계약 만료 임박.",
+  wrapup: {
+    label: "📦 Wrap-up · 현재 체류 끝나갈 무렵 — 귀국 정리 OR 연장·재계약 결정 시점",
+    readerState: "독자는 체류 후반, 마무리 결정 국면. 귀국 준비(서류 정리·계약 해지·보증금 정산) 또는 연장·재계약 협의를 눈앞에 두고 있다. 아직 떠나지 않았고, 떠날지/더 머물지 결정 단계.",
     hookExamples: [
-      "비자 만료일이 한 달 앞으로 다가왔어요.",
-      "이번 학기만 더 연장할지, 귀국할지 고민되죠?",
-      "어학당 계약 종료 전 한 달, 뭘 준비해야 할까요?",
+      "한국 떠나기 전 정리할 게 생각보다 많죠?",
+      "재계약 할지 귀국할지, 한 달 앞두고 고민되시나요?",
+      "단기임대 계약 해지, 보증금 돌려받는 순서 헷갈리지 않으세요?",
+    ],
+    banPhrases: [
+      "유학 갈지 말지",           // Consider 톤
+      "도착 첫날",                 // Arrive 톤
+      "ARC 처음 받을 때",          // Settle 톤
+      "한국 생활 막 시작했을 때", // 초기 톤
+    ],
+  },
+  change: {
+    label: "🔄 Change · 연장·이사·귀국 이후 — 다음 사이클 진입",
+    readerState: "독자는 마무리를 넘겨 실제 전환에 들어간 상태. 다른 지역 이동, 새 계약 시작, 귀국 후 재방문 고민, 알럼나이·추천 맥락.",
+    hookExamples: [
+      "귀국하고 나서도 한국이 계속 생각나죠?",
+      "다른 동네로 옮겨봤는데, 지난번과 이렇게 달라요.",
+      "친구가 한국 간다는데, 뭐부터 알려주면 좋을까요?",
     ],
     banPhrases: [
       "유학 갈지 말지",
