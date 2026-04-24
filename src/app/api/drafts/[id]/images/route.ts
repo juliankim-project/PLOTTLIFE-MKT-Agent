@@ -82,6 +82,7 @@ export async function POST(
 
     // 3-4. 이미지 생성 + 업로드 (순차 — rate limit 여유)
     const generated: Array<{ kind: "hero" | "inline"; index: number; url: string; altKo: string }> = []
+    const failures: string[] = []
     for (const p of prompts) {
       try {
         const img = await generateImage(p.prompt)
@@ -94,13 +95,19 @@ export async function POST(
         })
         generated.push({ kind: p.kind, index: p.index, url: up.publicUrl, altKo: p.altKo })
       } catch (e) {
-        console.warn(`[images] slot ${p.kind}-${p.index} 실패:`, e instanceof Error ? e.message : e)
+        const msg = e instanceof Error ? e.message : String(e)
+        console.warn(`[images] slot ${p.kind}-${p.index} 실패:`, msg)
+        failures.push(`${p.kind}-${p.index}: ${msg.slice(0, 300)}`)
       }
     }
 
     if (generated.length === 0) {
       return NextResponse.json(
-        { ok: false, error: "이미지 생성 실패 — Gemini Image quota / 결제 확인 필요" },
+        {
+          ok: false,
+          error: "이미지 생성 실패 — 모든 슬롯 실패",
+          failures,
+        },
         { status: 500 }
       )
     }
