@@ -13,10 +13,12 @@
 import "server-only"
 import { GoogleGenerativeAI } from "@google/generative-ai"
 
+// 2026-04 기준 실제 generateContent 호환 이미지 모델
+// listModels 로 확인한 활성 모델만 사용
 const IMAGE_MODEL_FALLBACKS = [
   "gemini-2.5-flash-image",
-  "gemini-2.5-flash-image-preview",
-  "gemini-2.0-flash-preview-image-generation",
+  "gemini-3.1-flash-image-preview",
+  "nano-banana-pro-preview",
 ]
 
 let _client: GoogleGenerativeAI | null = null
@@ -50,7 +52,7 @@ async function sleep(ms: number) {
  * @param prompt 영문 이미지 설명 (photorealistic, style, subject, lighting, camera 등)
  */
 export async function generateImage(prompt: string): Promise<GeneratedImage> {
-  let lastErr: unknown = null
+  const modelErrors: Array<{ model: string; error: string }> = []
   for (const modelName of IMAGE_MODEL_FALLBACKS) {
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
@@ -58,7 +60,6 @@ export async function generateImage(prompt: string): Promise<GeneratedImage> {
         const result = await model.generateContent(prompt)
         const parts = result.response?.candidates?.[0]?.content?.parts ?? []
         for (const p of parts) {
-          // SDK 두 형식 모두 지원 (camelCase / snake_case)
           const inline =
             (p as { inlineData?: { mimeType?: string; data?: string } }).inlineData ??
             ((p as { inline_data?: { mime_type?: string; data?: string } }).inline_data as
@@ -76,22 +77,27 @@ export async function generateImage(prompt: string): Promise<GeneratedImage> {
             }
           }
         }
-        // 이미지 part 없음 → 다음 모델로
-        lastErr = new Error(`${modelName}: image part missing in response`)
+        modelErrors.push({ model: modelName, error: "image part missing in response" })
         break
       } catch (err) {
-        lastErr = err
         const msg = err instanceof Error ? err.message : String(err)
-        if (!RETRYABLE.test(msg)) throw err
+        const shortMsg = msg.slice(0, 200)
+        if (!RETRYABLE.test(msg)) {
+          modelErrors.push({ model: modelName, error: shortMsg })
+          break
+        }
         if (attempt < 1) {
           await sleep(1200)
           continue
         }
+        modelErrors.push({ model: modelName, error: shortMsg })
       }
     }
-    console.warn(`[image-gen] ${modelName} exhausted, trying next…`)
+    console.warn(`[image-gen] ${modelName} exhausted`)
   }
-  throw lastErr instanceof Error
-    ? new Error(`이미지 생성 실패 (모든 모델 소진): ${lastErr.message}`)
-    : new Error("이미지 생성 실패")
+  // 통합 에러 메시지 — 각 모델별 이유 포함
+  const summary = modelErrors
+    .map((e) => `[${e.model}] ${e.error}`)
+    .join(" | ")
+  throw new Error(`이미지 생성 실패 (모든 모델 소진): ${summary}`)
 }
