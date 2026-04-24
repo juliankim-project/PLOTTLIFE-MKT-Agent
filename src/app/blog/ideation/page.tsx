@@ -93,11 +93,9 @@ function IdeationPage() {
   const [searchQuery, setSearchQuery] = useState("")
   const [searchOpen, setSearchOpen] = useState(false)
 
-  /* ─── 생성 옵션 ─────────────────────────────────────────── */
+  /* ─── 생성 옵션 (프리셋으로만 조절) ───────────────────── */
   const [temperature, setTemperature] = useState(0.7)
   const [count, setCount] = useState(10)
-  const [advancedOpen, setAdvancedOpen] = useState(false)
-  const [extraPrompt, setExtraPrompt] = useState("")
 
   type GenPreset = "focused" | "balanced" | "explore"
   const PRESETS: Record<GenPreset, { count: number; temp: number; label: string; emoji: string; sub: string; desc: string }> = {
@@ -240,7 +238,6 @@ function IdeationPage() {
         searchMode: searchQuery.trim() ? searchMode : undefined,
         count,
         temperature,
-        researchContext: extraPrompt.trim() || undefined,
       }
 
       const j = await safeFetchJson<{
@@ -575,72 +572,114 @@ function IdeationPage() {
               <span className="plan-card__count">{count}개 · {PRESETS[activePreset === "custom" ? "balanced" : activePreset].label}</span>
             </div>
 
-            {/* 축별 요약 rows */}
-            <div className="plan-rows">
-              <PlanRow icon="👥" label="세그먼트" empty={selectedSegments.size === 0}>
-                {selectedSegments.size === 0
-                  ? "전체 페르소나 밸런스"
-                  : Array.from(selectedSegments).map((id) => (
-                      <span key={id} className="plan-chip plan-chip--seg">
+            {/* 3열 요약 그리드 (세그먼트 · 여정 · 목적) */}
+            <div className="plan-grid">
+              <div className="plan-col">
+                <div className="plan-col__head">
+                  <span className="plan-col__icon">👥</span>
+                  <span className="plan-col__label">세그먼트</span>
+                </div>
+                <div className="plan-col__body">
+                  {selectedSegments.size === 0 ? (
+                    <span className="plan-col__empty">전체 밸런스</span>
+                  ) : (
+                    Array.from(selectedSegments).map((id) => (
+                      <span key={id} className="plan-val">
                         {PERSONAS.find((p) => p.id === id)?.label ?? id}
                       </span>
-                    ))}
-              </PlanRow>
+                    ))
+                  )}
+                </div>
+              </div>
 
-              <PlanRow icon="📋" label="여정 단계" empty={selectedStages.size === 0}>
-                {selectedStages.size === 0
-                  ? "8단계 고르게"
-                  : Array.from(selectedStages).map((s) => (
-                      <span key={s} className="plan-chip">
-                        {STAGE_DEFS[s].ko}
+              <div className="plan-col">
+                <div className="plan-col__head">
+                  <span className="plan-col__icon">📋</span>
+                  <span className="plan-col__label">여정 단계</span>
+                </div>
+                <div className="plan-col__body">
+                  {selectedStages.size === 0 ? (
+                    <span className="plan-col__empty">8단계 고르게</span>
+                  ) : (
+                    Array.from(selectedStages).map((s) => (
+                      <span key={s} className="plan-val">{STAGE_DEFS[s].ko}</span>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              <div className="plan-col">
+                <div className="plan-col__head">
+                  <span className="plan-col__icon">🎯</span>
+                  <span className="plan-col__label">목적</span>
+                </div>
+                <div className="plan-col__body">
+                  {selectedIntents.size === 0 ? (
+                    <span className="plan-col__empty">5개 의도 고르게</span>
+                  ) : (
+                    Array.from(selectedIntents).map((i) => (
+                      <span
+                        key={i}
+                        className="plan-val plan-val--intent"
+                        style={{ borderColor: INTENT_DEFS[i].color }}
+                      >
+                        <span className="plan-val__dot" style={{ background: INTENT_DEFS[i].color }} />
+                        {INTENT_DEFS[i].ko}
                       </span>
-                    ))}
-              </PlanRow>
-
-              {(selectedSeasons.size > 0 || selectedTriggers.size > 0 || selectedPains.size > 0) && (
-                <PlanRow icon="🌗" label="상황·레버" empty={false}>
-                  {Array.from(selectedSeasons).map((id) => (
-                    <span key={"s-" + id} className="plan-chip plan-chip--ctx">
-                      {SEASONS.find((s) => s.id === id)?.ko ?? id}
-                    </span>
-                  ))}
-                  {Array.from(selectedTriggers).map((id) => (
-                    <span key={"t-" + id} className="plan-chip plan-chip--ctx">
-                      {LIFE_TRIGGERS.find((t) => t.id === id)?.ko ?? id}
-                    </span>
-                  ))}
-                  {Array.from(selectedPains).map((id) => {
-                    const p = PAIN_TAGS.find((x) => x.id === id)
-                    return (
-                      <span key={"p-" + id} className="plan-chip plan-chip--pain">
-                        {p?.ko ?? id}
-                        {p?.isServiceLever && <span style={{ opacity: 0.7 }}> ⭐</span>}
-                      </span>
-                    )
-                  })}
-                </PlanRow>
-              )}
-
-              <PlanRow icon="🎯" label="목적" empty={selectedIntents.size === 0}>
-                {selectedIntents.size === 0
-                  ? "5개 의도 고르게"
-                  : Array.from(selectedIntents).map((i) => (
-                      <span key={i} className="plan-chip plan-chip--intent" style={{ borderColor: INTENT_DEFS[i].color }}>
-                        <span className="plan-dot" style={{ background: INTENT_DEFS[i].color }} />
-                        {INTENT_DEFS[i].emoji} {INTENT_DEFS[i].ko}
-                      </span>
-                    ))}
-              </PlanRow>
-
-              {searchQuery.trim() && (
-                <PlanRow icon="🔍" label="탐색어" empty={false}>
-                  <span className="plan-chip plan-chip--search">
-                    "{searchQuery.length > 48 ? searchQuery.slice(0, 48) + "…" : searchQuery}"
-                    <span className="x" onClick={() => setSearchQuery("")}>✕</span>
-                  </span>
-                </PlanRow>
-              )}
+                    ))
+                  )}
+                </div>
+              </div>
             </div>
+
+            {/* 보조 — 상황·레버 + 탐색어 (있을 때만) */}
+            {(selectedSeasons.size > 0 || selectedTriggers.size > 0 || selectedPains.size > 0 || searchQuery.trim()) && (
+              <div className="plan-sub">
+                {(selectedSeasons.size > 0 || selectedTriggers.size > 0 || selectedPains.size > 0) && (
+                  <div className="plan-sub__line">
+                    <span className="plan-sub__label">🌗 상황·레버</span>
+                    <div className="plan-sub__values">
+                      {Array.from(selectedSeasons).map((id) => (
+                        <span key={"s-" + id} className="plan-val plan-val--ctx">
+                          {SEASONS.find((s) => s.id === id)?.ko ?? id}
+                        </span>
+                      ))}
+                      {Array.from(selectedTriggers).map((id) => (
+                        <span key={"t-" + id} className="plan-val plan-val--ctx">
+                          {LIFE_TRIGGERS.find((t) => t.id === id)?.ko ?? id}
+                        </span>
+                      ))}
+                      {Array.from(selectedPains).map((id) => {
+                        const p = PAIN_TAGS.find((x) => x.id === id)
+                        return (
+                          <span key={"p-" + id} className="plan-val plan-val--pain">
+                            {p?.ko ?? id}
+                          </span>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+                {searchQuery.trim() && (
+                  <div className="plan-sub__line">
+                    <span className="plan-sub__label">🔍 탐색어</span>
+                    <div className="plan-sub__values">
+                      <span className="plan-val plan-val--search">
+                        {searchQuery.length > 56 ? searchQuery.slice(0, 56) + "…" : searchQuery}
+                        <button
+                          type="button"
+                          className="plan-val__x"
+                          onClick={() => setSearchQuery("")}
+                          aria-label="탐색어 제거"
+                        >
+                          ✕
+                        </button>
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* 메인 CTA */}
             <button
@@ -760,61 +799,6 @@ function IdeationPage() {
               )}
             </div>
 
-            {/* ── 서브: 고급 (접힘) ── */}
-            <div className="plan-extras plan-extras--last">
-              <button
-                type="button"
-                className="plan-extras__toggle"
-                onClick={() => setAdvancedOpen((v) => !v)}
-              >
-                <span>⚙️ 고급 — 프롬프트·Temperature·개수 <span className="plan-extras__opt">(선택)</span></span>
-                <span className="plan-extras__chev">{advancedOpen ? "▴" : "▾"}</span>
-              </button>
-              {advancedOpen && (
-                <div className="plan-extras__body">
-                  <label className="plan-extras__label">추가 지시문 (3축 위에 덧붙여집니다)</label>
-                  <textarea
-                    className="plan-extras__ta"
-                    value={extraPrompt}
-                    onChange={(e) => setExtraPrompt(e.target.value)}
-                    placeholder="예: '체크리스트 포맷 선호', '경쟁사가 놓친 각도 집중' 등"
-                  />
-                  <div className="plan-extras__row">
-                    <div>
-                      <label className="plan-extras__label">창의성 (Temperature)</label>
-                      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                        <input
-                          type="range"
-                          min="0"
-                          max="1"
-                          step="0.1"
-                          value={temperature}
-                          onChange={(e) => setTemperature(parseFloat(e.target.value))}
-                          style={{ flex: 1 }}
-                        />
-                        <span className="text-mono" style={{ fontSize: 12, fontWeight: 600, minWidth: 28 }}>
-                          {temperature.toFixed(1)}
-                        </span>
-                      </div>
-                    </div>
-                    <div>
-                      <label className="plan-extras__label">생성 개수</label>
-                      <select
-                        className="plan-extras__select"
-                        value={count}
-                        onChange={(e) => setCount(parseInt(e.target.value, 10))}
-                      >
-                        <option value={5}>5개 (추천만)</option>
-                        <option value={10}>10개 (15~25초)</option>
-                        <option value={20}>20개 (20~35초)</option>
-                        <option value={30}>30개 (25~45초)</option>
-                        <option value={50}>50개 (~60초)</option>
-                      </select>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
           </div>
 
           {/* 매트릭스 */}
@@ -1232,63 +1216,117 @@ function IdeationPage() {
           border-radius: 999px;
         }
 
-        /* rows */
-        .plan-rows {
-          display: flex;
-          flex-direction: column;
-          gap: 3px;
-          margin-bottom: 14px;
+        /* 3열 그리드 */
+        .plan-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr 1fr;
           background: white;
           border: 1px solid var(--border-default);
           border-radius: var(--r-md);
           overflow: hidden;
+          margin-bottom: 12px;
         }
-        .plan-row {
-          display: grid;
-          grid-template-columns: 100px 1fr;
-          gap: 10px;
-          align-items: center;
-          padding: 10px 12px;
-          border-bottom: 1px solid var(--border-subtle);
+        .plan-col {
+          padding: 12px 14px;
+          border-right: 1px solid var(--border-subtle);
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+          min-width: 0;
         }
-        .plan-row:last-child { border-bottom: 0; }
-        .plan-row__label {
+        .plan-col:last-child { border-right: 0; }
+        .plan-col__head {
           display: flex;
           align-items: center;
           gap: 6px;
-          font-size: 11px;
-          color: var(--text-muted);
-          font-weight: 600;
+          padding-bottom: 6px;
+          border-bottom: 1px solid var(--border-subtle);
         }
-        .plan-row__icon { font-size: 14px; line-height: 1; }
-        .plan-row__name { letter-spacing: 0.02em; }
-        .plan-row__values { display: flex; flex-wrap: wrap; gap: 4px; font-size: 12px; color: var(--text-primary); }
-        .plan-row__values--empty { color: var(--text-muted); font-style: italic; font-size: 11.5px; }
+        .plan-col__icon { font-size: 13px; line-height: 1; }
+        .plan-col__label {
+          font-size: 10.5px;
+          font-weight: 700;
+          color: var(--text-muted);
+          letter-spacing: 0.06em;
+          text-transform: uppercase;
+        }
+        .plan-col__body {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 4px;
+          align-content: flex-start;
+          min-height: 22px;
+        }
+        .plan-col__empty {
+          font-size: 11.5px;
+          color: var(--text-muted);
+          font-style: italic;
+        }
 
-        .plan-chip {
+        .plan-val {
           display: inline-flex;
           align-items: center;
-          gap: 4px;
-          padding: 2px 8px;
+          gap: 5px;
+          padding: 3px 9px;
           border-radius: 999px;
-          font-size: 11.5px;
+          font-size: 12px;
           font-weight: 600;
+          line-height: 1.3;
           background: var(--bg-subtle);
           color: var(--text-primary);
           border: 1px solid var(--border-default);
         }
-        .plan-chip--seg { background: #eef2ff; border-color: #c7d2fe; color: #3730a3; }
-        .plan-chip--ctx { background: #fffbeb; border-color: #fde68a; color: #92400e; }
-        .plan-chip--pain { background: #fef2f2; border-color: #fecaca; color: #991b1b; }
-        .plan-chip--intent { background: white; border-width: 1.5px; color: var(--text-primary); }
-        .plan-chip--search {
+        .plan-val--intent { background: white; border-width: 1.5px; }
+        .plan-val--ctx { background: #fffbeb; border-color: #fde68a; color: #92400e; }
+        .plan-val--pain { background: #fef2f2; border-color: #fecaca; color: #991b1b; }
+        .plan-val--search {
           background: #fff3f6;
           border-color: #ffc9d6;
           color: #9f1239;
-          font-weight: 600;
+          max-width: 100%;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
         }
-        .plan-chip--search .x { cursor: pointer; opacity: 0.7; margin-left: 4px; }
-        .plan-dot { width: 8px; height: 8px; border-radius: 999px; }
+        .plan-val__dot { width: 7px; height: 7px; border-radius: 999px; flex-shrink: 0; }
+        .plan-val__x {
+          background: transparent;
+          border: 0;
+          color: currentColor;
+          cursor: pointer;
+          font-size: 11px;
+          padding: 0;
+          margin-left: 2px;
+          opacity: 0.7;
+        }
+        .plan-val__x:hover { opacity: 1; }
+
+        /* 보조 라인 (상황·탐색어) */
+        .plan-sub {
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+          margin-bottom: 14px;
+          padding: 10px 12px;
+          background: white;
+          border: 1px solid var(--border-default);
+          border-radius: var(--r-md);
+        }
+        .plan-sub__line {
+          display: flex;
+          gap: 10px;
+          align-items: baseline;
+          flex-wrap: wrap;
+        }
+        .plan-sub__label {
+          font-size: 10.5px;
+          font-weight: 700;
+          color: var(--text-muted);
+          letter-spacing: 0.04em;
+          white-space: nowrap;
+          flex-shrink: 0;
+        }
+        .plan-sub__values { display: flex; flex-wrap: wrap; gap: 4px; flex: 1; min-width: 0; }
 
         /* 메인 CTA */
         .plan-card__cta {
@@ -1332,7 +1370,6 @@ function IdeationPage() {
           border-top: 1px solid var(--brand-200);
           padding-top: 10px;
         }
-        .plan-extras--last { border-top: 0; padding-top: 0; margin-top: 4px; }
         .plan-extras__toggle {
           width: 100%;
           display: flex;
@@ -1360,14 +1397,6 @@ function IdeationPage() {
           flex-direction: column;
           gap: 8px;
         }
-        .plan-extras__label {
-          font-size: 11px;
-          color: var(--text-muted);
-          font-weight: 600;
-          display: block;
-          margin-bottom: 4px;
-        }
-
         /* inline search */
         .search-inline__head {
           display: flex;
@@ -1427,31 +1456,6 @@ function IdeationPage() {
           cursor: pointer;
         }
         .search-inline__hint:hover { background: var(--brand-50); border-color: var(--brand-200); color: var(--brand-700); }
-
-        .plan-extras__ta {
-          width: 100%;
-          min-height: 60px;
-          padding: 8px 10px;
-          border: 1px solid var(--border-default);
-          border-radius: var(--r-md);
-          resize: vertical;
-          font-family: inherit;
-          font-size: 12.5px;
-          background: white;
-        }
-        .plan-extras__row {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 14px;
-          margin-top: 4px;
-        }
-        .plan-extras__select {
-          width: 100%;
-          padding: 5px 8px;
-          border: 1px solid var(--border-default);
-          border-radius: var(--r-md);
-          background: white;
-        }
 
         /* 매트릭스 */
         .matrix-toolbar {
@@ -1658,26 +1662,3 @@ function Spinner({ size = 14 }: { size?: number }) {
   )
 }
 
-function PlanRow({
-  icon,
-  label,
-  empty,
-  children,
-}: {
-  icon: string
-  label: string
-  empty: boolean
-  children: React.ReactNode
-}) {
-  return (
-    <div className="plan-row">
-      <div className="plan-row__label">
-        <span className="plan-row__icon">{icon}</span>
-        <span className="plan-row__name">{label}</span>
-      </div>
-      <div className={`plan-row__values${empty ? " plan-row__values--empty" : ""}`}>
-        {children}
-      </div>
-    </div>
-  )
-}
