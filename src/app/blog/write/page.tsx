@@ -67,9 +67,9 @@ export default function WriteListPage() {
   return (
     <div className="bpage fade-up">
       <PageHeader
-        eyebrow="STAGE 04 · WRITE"
-        title="작성"
-        sub="주제선정에서 확정된 브리프 1개를 선택하면 Copywriter 에이전트가 플라트 블로그 스타일로 본문을 작성합니다."
+        eyebrow="STAGE 04 · CREATE"
+        title="콘텐츠 제작"
+        sub="브리프 작성에서 확정된 브리프 1개를 선택하면 Copywriter 에이전트가 플라트 블로그 스타일로 본문을 작성합니다."
       />
 
       {error && (
@@ -97,7 +97,7 @@ export default function WriteListPage() {
             </div>
           </div>
           <Link href="/blog/topics" className="bbtn bbtn--ghost bbtn--sm" style={{ marginLeft: "auto" }}>
-            <Icon name="target" size={12} /> 주제선정으로
+            <Icon name="target" size={12} /> 브리프 작성으로
           </Link>
         </div>
 
@@ -117,7 +117,7 @@ export default function WriteListPage() {
               <br />
               먼저{" "}
               <Link href="/blog/topics" style={{ color: "var(--brand-600)", fontWeight: 600 }}>
-                주제선정
+                브리프 작성
               </Link>
               에서 브리프를 만들고 확정해주세요.
             </div>

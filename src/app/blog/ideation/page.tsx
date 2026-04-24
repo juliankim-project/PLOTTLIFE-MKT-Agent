@@ -1,38 +1,25 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState, Suspense } from "react"
-import { useRouter, useSearchParams } from "next/navigation"
+import { useRouter } from "next/navigation"
 import { Icon, PageHeader } from "../_ui"
 import { PERSONAS } from "../_lib/stages"
-import type { IconName } from "../_lib/stages"
+import {
+  INTENT_DEFS,
+  INTENT_ORDER,
+  JOURNEY_STAGES,
+  STAGE_DEFS,
+  SEASONS,
+  LIFE_TRIGGERS,
+  PAIN_TAGS,
+  guessAxesFromText,
+  type Intent,
+  type JourneyStage,
+} from "@/lib/ideation/compass"
 
-interface PickedKeyword {
-  id: string
-  label: string
-  category: string | null
-  monthly_total: number | null
-  competition: string | null
-}
-
-interface InputSource {
-  id: string
-  icon: IconName
-  label: string
-  meta: string
-}
-
-const INPUTS: InputSource[] = [
-  { id: "trends", icon: "trend", label: "검색 트렌드", meta: "Top 6 키워드" },
-  { id: "competitor", icon: "globe", label: "경쟁사 블로그", meta: "엔코·미스터멘션 외 4" },
-  { id: "product", icon: "hash", label: "플라트 매물·리뷰", meta: "1,842 매물 / 3,104 리뷰" },
-  { id: "community", icon: "rss", label: "유학생 커뮤니티", meta: "X · Threads · Reddit" },
-  { id: "booking", icon: "users", label: "예약 로그 패턴", meta: "1.2K 전환 스니펫" },
-]
-
-const CLUSTER_LABEL: Record<string, string> = {
-  consider: "Consider", prepare: "Prepare", arrive: "Arrive", settle: "Settle",
-  live: "Live", explore: "Explore", change: "Change",
-}
+/* ══════════════════════════════════════════════════════════════
+ * Types
+ * ══════════════════════════════════════════════════════════════ */
 
 interface DbIdea {
   id: string
@@ -41,11 +28,13 @@ interface DbIdea {
   rationale: string | null
   volume: number | null
   fit_score: number | null
-  signal: { kind?: string; detail?: string } | null
+  signal: { kind?: string; detail?: string; intent?: string } | null
   related_keywords: string[] | null
   status: string
   created_at: string
 }
+
+type GenPhase = "idle" | "calling-ai" | "parsing" | "saving" | "done"
 
 function formatVolume(v: number | null): string {
   if (v == null) return "—"
@@ -56,7 +45,6 @@ function isHotSignal(kind?: string): boolean {
   return kind === "search-rising" || kind === "competitor-miss"
 }
 
-/** fetch 결과를 안전하게 JSON 으로 파싱 (Vercel timeout 시 HTML/text 반환 대응) */
 async function safeFetchJson<T = unknown>(
   input: RequestInfo | URL,
   init?: RequestInit
@@ -75,7 +63,9 @@ async function safeFetchJson<T = unknown>(
   }
 }
 
-type GenPhase = "idle" | "calling-ai" | "parsing" | "saving" | "done"
+/* ══════════════════════════════════════════════════════════════
+ * Page
+ * ══════════════════════════════════════════════════════════════ */
 
 export default function IdeationPageWrapper() {
   return (
@@ -87,22 +77,32 @@ export default function IdeationPageWrapper() {
 
 function IdeationPage() {
   const router = useRouter()
-  const searchParams = useSearchParams()
-  const [selectedInputs, setSelectedInputs] = useState<Set<string>>(
-    new Set(["trends", "competitor", "product"])
+
+  /* ─── 3축 Compass 상태 ─────────────────────────────────── */
+  const [selectedIntents, setSelectedIntents] = useState<Set<Intent>>(new Set(["enable"]))
+  const [selectedSegments, setSelectedSegments] = useState<Set<string>>(new Set(["student"]))
+  const [selectedStages, setSelectedStages] = useState<Set<JourneyStage>>(
+    new Set(["prepare", "arrive", "settle"])
   )
-  const [selectedPersona, setSelectedPersona] = useState("student")
+  const [selectedSeasons, setSelectedSeasons] = useState<Set<string>>(new Set())
+  const [selectedTriggers, setSelectedTriggers] = useState<Set<string>>(new Set())
+  const [selectedPains, setSelectedPains] = useState<Set<string>>(new Set())
+
+  /* ─── 검색 ─────────────────────────────────────────────── */
+  const [searchMode, setSearchMode] = useState<"sentence" | "keyword">("sentence")
+  const [searchQuery, setSearchQuery] = useState("")
+
+  /* ─── 생성 옵션 ─────────────────────────────────────────── */
   const [temperature, setTemperature] = useState(0.7)
   const [count, setCount] = useState(30)
-  const [prompt, setPrompt] = useState(
-    "선택된 인풋과 페르소나를 바탕으로, 플라트라이프 게스트 여정 단계(Consider/Prepare/Arrive/Settle/Live/Explore/Change)별로 분산해 롱테일 단기임대 주제를 30개 생성해줘."
-  )
+  const [advancedOpen, setAdvancedOpen] = useState(false)
+  const [extraPrompt, setExtraPrompt] = useState("")
 
+  /* ─── 상태 / 결과 ──────────────────────────────────────── */
   const [phase, setPhase] = useState<GenPhase>("idle")
   const [progress, setProgress] = useState(0)
   const [ideas, setIdeas] = useState<DbIdea[]>([])
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
-  const [showHistory, setShowHistory] = useState(false)
   const [historyLoading, setHistoryLoading] = useState(false)
   const [promoting, setPromoting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -113,52 +113,80 @@ function IdeationPage() {
     durationMs: number
   } | null>(null)
 
-  /** 리서치에서 ?keywords=id1,id2,... 로 받아온 키워드 */
-  const [pickedKeywords, setPickedKeywords] = useState<PickedKeyword[]>([])
-  const keywordsParam = searchParams.get("keywords")
+  /* ─── 매트릭스 필터 ─────────────────────────────────────── */
+  const [sortMode, setSortMode] = useState<"fit" | "volume" | "recent">("fit")
+  const [showOnlySelected, setShowOnlySelected] = useState(false)
+  const [showOnlyHot, setShowOnlyHot] = useState(false)
 
-  useEffect(() => {
-    if (!keywordsParam) return
-    const ids = keywordsParam.split(",").filter(Boolean)
-    if (ids.length === 0) return
-    ;(async () => {
-      try {
-        const r = await fetch(`/api/research/keywords`, { cache: "no-store" })
-        const j = await r.json()
-        if (j.ok && Array.isArray(j.keywords)) {
-          const set = new Set(ids)
-          setPickedKeywords(
-            j.keywords
-              .filter((k: PickedKeyword) => set.has(k.id))
-              .sort(
-                (a: PickedKeyword, b: PickedKeyword) =>
-                  (b.monthly_total ?? 0) - (a.monthly_total ?? 0)
-              )
-          )
-        }
-      } catch {
-        /* silent */
-      }
-    })()
-  }, [keywordsParam])
-
-  const removePickedKeyword = (id: string) => {
-    setPickedKeywords((prev) => prev.filter((k) => k.id !== id))
+  /* ─── 토글 헬퍼 ─────────────────────────────────────────── */
+  function toggleSet<T>(set: Set<T>, v: T, setter: (s: Set<T>) => void) {
+    const n = new Set(set)
+    if (n.has(v)) n.delete(v)
+    else n.add(v)
+    setter(n)
   }
 
-  const toggle = (id: string) => {
-    const n = new Set(selectedInputs)
-    if (n.has(id)) n.delete(id)
-    else n.add(id)
-    setSelectedInputs(n)
-  }
+  /* ─── 자연어 힌트 적용 (문장 모드에서 의도 자동 반영) ─── */
+  const applyHintsFromQuery = useCallback((q: string) => {
+    if (!q.trim()) return
+    const hints = guessAxesFromText(q)
+    if (hints.intents.length > 0) {
+      setSelectedIntents(new Set(hints.intents))
+    }
+    if (hints.stages.length > 0) {
+      setSelectedStages(new Set(hints.stages))
+    }
+    if (hints.seasons.length > 0) {
+      setSelectedSeasons((prev) => new Set([...prev, ...hints.seasons]))
+    }
+    if (hints.triggers.length > 0) {
+      setSelectedTriggers((prev) => new Set([...prev, ...hints.triggers]))
+    }
+    if (hints.pains.length > 0) {
+      setSelectedPains((prev) => new Set([...prev, ...hints.pains]))
+    }
+  }, [])
 
-  /** fit_score 내림차순 정렬 */
-  const sortedIdeas = useMemo(() => {
-    return [...ideas].sort((a, b) => (b.fit_score ?? 0) - (a.fit_score ?? 0))
-  }, [ideas])
+  /* ─── 정렬/필터된 ideas ─────────────────────────────────── */
+  const visibleIdeas = useMemo(() => {
+    let list = [...ideas]
+    if (showOnlySelected) list = list.filter((i) => selectedIds.has(i.id))
+    if (showOnlyHot) list = list.filter((i) => isHotSignal(i.signal?.kind))
+    if (sortMode === "fit") list.sort((a, b) => (b.fit_score ?? 0) - (a.fit_score ?? 0))
+    else if (sortMode === "volume") list.sort((a, b) => (b.volume ?? 0) - (a.volume ?? 0))
+    else list.sort((a, b) => b.created_at.localeCompare(a.created_at))
+    return list
+  }, [ideas, showOnlySelected, showOnlyHot, selectedIds, sortMode])
 
-  /** 개별 선택 토글 */
+  /* ─── 매트릭스 그룹핑 (여정 × 목적) ─────────────────────── */
+  const matrixRows = useMemo(() => {
+    const rows: JourneyStage[] =
+      selectedStages.size > 0
+        ? (JOURNEY_STAGES.filter((s) => selectedStages.has(s)) as JourneyStage[])
+        : (JOURNEY_STAGES as readonly JourneyStage[]).slice()
+    return rows
+  }, [selectedStages])
+
+  const matrixCols = useMemo(() => {
+    const cols: Intent[] =
+      selectedIntents.size > 0
+        ? INTENT_ORDER.filter((i) => selectedIntents.has(i))
+        : INTENT_ORDER.slice()
+    return cols
+  }, [selectedIntents])
+
+  const matrixBuckets = useMemo(() => {
+    const map = new Map<string, DbIdea[]>()
+    for (const idea of visibleIdeas) {
+      const stage = (idea.cluster ?? "consider") as JourneyStage
+      const intent = (idea.signal?.intent ?? "discover") as Intent
+      const key = `${stage}|${intent}`
+      if (!map.has(key)) map.set(key, [])
+      map.get(key)!.push(idea)
+    }
+    return map
+  }, [visibleIdeas])
+
   const toggleSelect = (id: string) => {
     setSelectedIds((prev) => {
       const n = new Set(prev)
@@ -167,14 +195,105 @@ function IdeationPage() {
       return n
     })
   }
-  const allSelected = ideas.length > 0 && selectedIds.size === ideas.length
-  const someSelected = selectedIds.size > 0 && !allSelected
-  const toggleSelectAll = () => {
-    if (allSelected) setSelectedIds(new Set())
-    else setSelectedIds(new Set(ideas.map((i) => i.id)))
+
+  /* ─── 생성 ─────────────────────────────────────────────── */
+  const handleGenerate = async () => {
+    setError(null)
+    setLastRunMeta(null)
+    setPhase("calling-ai")
+    setProgress(8)
+
+    let tick = 0
+    const timer = setInterval(() => {
+      tick++
+      setProgress((p) => Math.min(p + (tick < 10 ? 4 : 2), 92))
+      if (tick === 12) setPhase("parsing")
+      if (tick === 20) setPhase("saving")
+    }, 1500)
+
+    try {
+      const body = {
+        intents: Array.from(selectedIntents),
+        segmentSlugs: Array.from(selectedSegments),
+        journeyStages: Array.from(selectedStages),
+        seasons: Array.from(selectedSeasons),
+        lifeTriggers: Array.from(selectedTriggers),
+        painTags: Array.from(selectedPains),
+        searchQuery: searchQuery.trim() || undefined,
+        searchMode: searchQuery.trim() ? searchMode : undefined,
+        count,
+        temperature,
+        researchContext: extraPrompt.trim() || undefined,
+      }
+
+      const j = await safeFetchJson<{
+        ok: boolean
+        result?: {
+          count: number
+          provider: string
+          model: string
+          durationMs: number
+          ideas: DbIdea[]
+        }
+        error?: string
+      }>("/api/ideation/run", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      })
+
+      if (!j.ok || !j.result) throw new Error(j.error ?? "생성 실패")
+
+      setLastRunMeta({
+        count: j.result.count,
+        provider: j.result.provider,
+        model: j.result.model,
+        durationMs: j.result.durationMs,
+      })
+      const newIdeas = j.result.ideas
+      setIdeas(newIdeas)
+      setSelectedIds(new Set(newIdeas.map((i) => i.id)))
+      setProgress(100)
+      setPhase("done")
+      setTimeout(() => {
+        setPhase("idle")
+        setProgress(0)
+      }, 1500)
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "생성 실패"
+      setError(
+        msg.includes("504") || msg.includes("timeout") || msg.includes("JSON")
+          ? "서버 응답이 너무 오래 걸렸어요. Gemini가 혼잡한 시간일 수 있습니다 — 1분 뒤 다시 시도해 보세요."
+          : msg
+      )
+      setPhase("idle")
+      setProgress(0)
+    } finally {
+      clearInterval(timer)
+    }
   }
 
-  /** 선택된 아이디어를 shortlist로 승격 + topics 페이지로 이동 */
+  /* ─── 이전 아이디어 불러오기 ──────────────────────────── */
+  const loadHistory = useCallback(async () => {
+    setHistoryLoading(true)
+    setError(null)
+    try {
+      const j = await safeFetchJson<{ ok: boolean; ideas?: DbIdea[]; error?: string }>(
+        "/api/ideation/ideas?status=draft&limit=50",
+        { cache: "no-store" }
+      )
+      if (!j.ok) throw new Error(j.error ?? "불러오기 실패")
+      const list = j.ideas ?? []
+      setIdeas(list)
+      setSelectedIds(new Set(list.map((i) => i.id)))
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "네트워크 오류")
+    } finally {
+      setHistoryLoading(false)
+    }
+  }, [])
+
+  /* ─── Shortlist 승격 ──────────────────────────────────── */
   const promoteAndGoToFunnel = async () => {
     if (selectedIds.size === 0) return
     setPromoting(true)
@@ -196,159 +315,27 @@ function IdeationPage() {
     }
   }
 
-  /** 이전 아이디어 불러오기 — 사용자 opt-in */
-  const loadHistory = useCallback(async () => {
-    setHistoryLoading(true)
-    setError(null)
-    try {
-      const j = await safeFetchJson<{ ok: boolean; ideas?: DbIdea[]; error?: string }>(
-        "/api/ideation/ideas?status=draft&limit=50",
-        { cache: "no-store" }
-      )
-      if (!j.ok) throw new Error(j.error ?? "불러오기 실패")
-      const list = j.ideas ?? []
-      setIdeas(list)
-      // 불러온 것들도 기본 전체 선택
-      setSelectedIds(new Set(list.map((i) => i.id)))
-      setShowHistory(true)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "네트워크 오류")
-    } finally {
-      setHistoryLoading(false)
-    }
-  }, [])
-
-  /** 개별 아이디어 버리기 */
-  const discardIdea = async (id: string) => {
-    setIdeas((prev) => prev.filter((i) => i.id !== id))
-    setSelectedIds((prev) => {
-      const n = new Set(prev)
-      n.delete(id)
-      return n
-    })
-    try {
-      await fetch(`/api/ideation/ideas/${id}`, { method: "DELETE" })
-    } catch {
-      // 실패해도 UI 롤백은 생략
-    }
-  }
-
-  /** AI로 주제 생성 */
-  const handleGenerate = async () => {
-    setError(null)
-    setLastRunMeta(null)
-    setPhase("calling-ai")
-    setProgress(8)
-
-    // 가짜 progress — 실제 응답 기다리는 동안 사용자 피드백
-    let tick = 0
-    const timer = setInterval(() => {
-      tick++
-      setProgress((p) => Math.min(p + (tick < 10 ? 4 : 2), 92))
-      if (tick === 12) setPhase("parsing")
-      if (tick === 20) setPhase("saving")
-    }, 1500)
-
-    try {
-      const persona = PERSONAS.find((p) => p.id === selectedPersona)
-
-      // 리서치에서 받은 키워드를 프롬프트에 자동 주입
-      const keywordBlock =
-        pickedKeywords.length > 0
-          ? `\n[리서치에서 넘어온 우선 키워드 — 이 키워드들을 중심으로 주제를 확장해줘]\n${pickedKeywords
-              .map(
-                (k) =>
-                  `- ${k.label} (월 ${k.monthly_total?.toLocaleString() ?? "?"}회${
-                    k.competition ? `, 경쟁 ${k.competition}` : ""
-                  })`
-              )
-              .join("\n")}`
-          : ""
-
-      const researchContext = [
-        `선택된 인풋 소스: ${Array.from(selectedInputs)
-          .map((id) => INPUTS.find((x) => x.id === id)?.label)
-          .filter(Boolean)
-          .join(", ")}`,
-        keywordBlock,
-        `\n사용자 가이드:\n${prompt}`,
-      ]
-        .filter(Boolean)
-        .join("\n")
-
-      const j = await safeFetchJson<{
-        ok: boolean
-        result?: {
-          count: number
-          provider: string
-          model: string
-          durationMs: number
-          ideas: DbIdea[]
-        }
-        error?: string
-      }>("/api/ideation/run", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          personaSlug: selectedPersona,
-          personaLabel: persona?.label,
-          count,
-          temperature,
-          researchContext,
-        }),
-      })
-
-      if (!j.ok || !j.result) throw new Error(j.error ?? "생성 실패")
-
-      setLastRunMeta({
-        count: j.result.count,
-        provider: j.result.provider,
-        model: j.result.model,
-        durationMs: j.result.durationMs,
-      })
-      // 새로 만든 것만 뜨게 — 스트림 리셋 후 새 결과로
-      const newIdeas = j.result.ideas
-      setIdeas(newIdeas)
-      // 생성 직후 전체 자동 선택 (사용자가 걸러내는 흐름)
-      setSelectedIds(new Set(newIdeas.map((i) => i.id)))
-      setShowHistory(false)
-      setProgress(100)
-      setPhase("done")
-      setTimeout(() => {
-        setPhase("idle")
-        setProgress(0)
-      }, 1500)
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "생성 실패"
-      setError(
-        msg.includes("504") || msg.includes("timeout") || msg.includes("JSON")
-          ? "서버 응답이 너무 오래 걸렸어요. Gemini가 혼잡한 시간일 수 있습니다 — 1분 뒤 다시 시도해 보세요. 이미 생성된 주제는 '이전 아이디어 불러오기'에서 확인할 수 있어요."
-          : msg
-      )
-      setPhase("idle")
-      setProgress(0)
-    } finally {
-      clearInterval(timer)
-    }
-  }
-
   const phaseLabel: Record<GenPhase, string> = {
     idle: "",
     "calling-ai": "Gemini 에이전트에게 주제를 요청 중…",
-    parsing: "응답을 분석하고 여정 단계별로 분류 중…",
+    parsing: "응답을 분석하고 3축으로 분류 중…",
     saving: "DB에 아이디어를 저장 중…",
     done: "완료!",
   }
+
+  const totalAxisCount =
+    selectedIntents.size + selectedSegments.size + selectedStages.size +
+    selectedSeasons.size + selectedTriggers.size + selectedPains.size
 
   return (
     <div className="bpage fade-up">
       <PageHeader
         eyebrow="STAGE 02 · IDEATION"
-        title="아이데이션"
-        sub="수집된 인풋을 연결해 AI가 30~50개의 단기임대 토픽 아이디어를 확장 생성합니다. 게스트 여정 단계별 클러스터로 묶여 다음 단계 퍼널로 넘어갑니다."
+        title="아이데이션 — 3축 Compass"
+        sub="목적·세그먼트·상황 3축으로 주제를 생성하고, 여정×목적 매트릭스에서 이번 라운드에 쓸 주제를 선정합니다."
         actions={[
           {
-            label: "주제선정으로 →",
+            label: "브리프 작성으로 →",
             primary: true,
             onClick: () => router.push("/blog/topics"),
           },
@@ -356,305 +343,186 @@ function IdeationPage() {
       />
 
       {error && (
-        <div
-          style={{
-            marginBottom: 16,
-            padding: "10px 14px",
-            background: "var(--danger-bg)",
-            border: "1px solid var(--danger-border)",
-            color: "var(--danger-fg)",
-            borderRadius: "var(--r-md)",
-            fontSize: 13,
-            display: "flex",
-            gap: 8,
-            alignItems: "flex-start",
-          }}
-        >
+        <div className="err-banner">
           <span>⚠️</span>
           <span style={{ flex: 1, lineHeight: 1.5 }}>{error}</span>
-          <button
-            onClick={() => setError(null)}
-            style={{
-              fontSize: 12,
-              color: "var(--danger-fg)",
-              cursor: "pointer",
-              background: "transparent",
-              border: 0,
-            }}
-          >
-            ✕
-          </button>
-        </div>
-      )}
-
-      {pickedKeywords.length > 0 && (
-        <div
-          className="bcard"
-          style={{
-            marginBottom: 14,
-            padding: "14px 18px",
-            background: "linear-gradient(180deg, var(--brand-50), var(--bg-surface))",
-            borderColor: "var(--brand-200)",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-            <span style={{ fontSize: 11, fontWeight: 700, color: "var(--brand-700)", textTransform: "uppercase", letterSpacing: ".06em" }}>
-              🔍 리서치에서 받은 키워드
-            </span>
-            <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
-              {pickedKeywords.length}개 · 이 키워드를 중심으로 주제 확장
-            </span>
-            <a
-              href="/blog/research"
-              style={{ marginLeft: "auto", fontSize: 11, color: "var(--brand-600)", fontWeight: 600 }}
-            >
-              ← 리서치로 돌아가기
-            </a>
-          </div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-            {pickedKeywords.map((k) => (
-              <span
-                key={k.id}
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 6,
-                  padding: "4px 10px",
-                  background: "white",
-                  border: "1px solid var(--brand-200)",
-                  borderRadius: 999,
-                  fontSize: 12,
-                  fontWeight: 500,
-                }}
-              >
-                {k.label}
-                {k.monthly_total != null && (
-                  <span className="text-mono" style={{ fontSize: 10.5, color: "var(--text-muted)" }}>
-                    · {k.monthly_total.toLocaleString()}/월
-                  </span>
-                )}
-                <button
-                  onClick={() => removePickedKeyword(k.id)}
-                  style={{
-                    color: "var(--text-muted)",
-                    fontSize: 11,
-                    padding: 0,
-                    marginLeft: 2,
-                    cursor: "pointer",
-                    background: "transparent",
-                    border: 0,
-                  }}
-                  title="이 키워드 제외"
-                >
-                  ✕
-                </button>
-              </span>
-            ))}
-          </div>
+          <button onClick={() => setError(null)} className="err-x">✕</button>
         </div>
       )}
 
       <div className="ideation-grid">
-        {/* LEFT: Inputs panel */}
-        <div className="bcard">
+        {/* ═══════════════════════════════════════════════════════
+           LEFT: 3-axis Compass
+           ═══════════════════════════════════════════════════════ */}
+        <aside className="bcard compass-card">
           <div className="bcard__header">
-            <div className="bcard__title">인풋 소스</div>
+            <div className="bcard__title">콘텐츠 컴파스</div>
             <span className="bchip bchip--brand" style={{ marginLeft: "auto" }}>
-              {selectedInputs.size}개 선택
+              {totalAxisCount}개 선택
             </span>
           </div>
-          <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 6 }}>
-            {INPUTS.map((i) => {
-              const on = selectedInputs.has(i.id)
-              return (
-                <div
-                  key={i.id}
-                  onClick={() => toggle(i.id)}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 10,
-                    padding: "9px 10px",
-                    borderRadius: "var(--r-md)",
-                    cursor: "pointer",
-                    background: on ? "var(--brand-50)" : "transparent",
-                    border: `1px solid ${on ? "var(--brand-200)" : "transparent"}`,
-                  }}
-                >
+
+          {/* ① 목적 */}
+          <div className="compass-section">
+            <div className="compass-label">
+              <span>① 목적 (Intent)</span>
+              <span className="compass-label__count">{selectedIntents.size} 선택</span>
+            </div>
+            <div className="intent-list">
+              {INTENT_ORDER.map((id) => {
+                const d = INTENT_DEFS[id]
+                const on = selectedIntents.has(id)
+                return (
                   <div
-                    style={{
-                      width: 28,
-                      height: 28,
-                      borderRadius: 7,
-                      background: on ? "var(--brand-500)" : "var(--bg-muted)",
-                      color: on ? "white" : "var(--text-tertiary)",
-                      display: "grid",
-                      placeItems: "center",
-                    }}
+                    key={id}
+                    className={`intent-row${on ? " intent-row--on" : ""}`}
+                    onClick={() => toggleSet(selectedIntents, id, setSelectedIntents)}
                   >
-                    <Icon name={i.icon} size={13} />
+                    <span className="intent-dot" style={{ background: d.color }} />
+                    <span className="intent-emoji">{d.emoji}</span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div className="intent-name">
+                        {d.ko}{" "}
+                        <span className="intent-en">· {d.en}</span>
+                      </div>
+                      <div className="intent-desc">{d.desc}</div>
+                    </div>
                   </div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600 }}>{i.label}</div>
-                    <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{i.meta}</div>
-                  </div>
-                  <div
-                    style={{
-                      width: 16,
-                      height: 16,
-                      borderRadius: 4,
-                      border: `1.5px solid ${on ? "var(--brand-600)" : "var(--border-strong)"}`,
-                      background: on ? "var(--brand-600)" : "white",
-                      display: "grid",
-                      placeItems: "center",
-                    }}
+                )
+              })}
+            </div>
+          </div>
+
+          {/* ② 세그먼트 */}
+          <div className="compass-section">
+            <div className="compass-label">
+              <span>② 세그먼트 (Who)</span>
+              <span className="compass-label__count">{selectedSegments.size} 선택</span>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+              {PERSONAS.map((p) => {
+                const on = selectedSegments.has(p.id)
+                return (
+                  <label
+                    key={p.id}
+                    className={`seg-row${on ? " seg-row--on" : ""}`}
                   >
-                    {on && <Icon name="check" size={10} stroke={3} style={{ color: "white" }} />}
-                  </div>
-                </div>
-              )
-            })}
+                    <input
+                      type="checkbox"
+                      checked={on}
+                      onChange={() => toggleSet(selectedSegments, p.id, setSelectedSegments)}
+                    />
+                    <div style={{ flex: 1 }}>
+                      <div className="seg-name">{p.label}</div>
+                      <div className="seg-desc">{p.desc}</div>
+                    </div>
+                    <span className="seg-meta">{Math.round(p.match * 100)}%</span>
+                  </label>
+                )
+              })}
+            </div>
           </div>
 
-          <div style={{ padding: "14px 16px", borderTop: "1px solid var(--border-subtle)" }}>
-            <div
-              style={{
-                fontSize: 11,
-                color: "var(--text-muted)",
-                fontWeight: 600,
-                textTransform: "uppercase",
-                letterSpacing: ".04em",
-                marginBottom: 8,
-              }}
-            >
-              페르소나
+          {/* ③ 상황 */}
+          <div className="compass-section">
+            <div className="compass-label">
+              <span>③ 상황 (Context)</span>
+              <span className="compass-label__count">
+                {selectedStages.size + selectedSeasons.size + selectedTriggers.size + selectedPains.size} 선택
+              </span>
             </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-              {PERSONAS.map((p) => (
-                <label
-                  key={p.id}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 8,
-                    padding: "6px 8px",
-                    borderRadius: 6,
-                    cursor: "pointer",
-                    background: selectedPersona === p.id ? "var(--bg-muted)" : "transparent",
-                  }}
-                >
-                  <input
-                    type="radio"
-                    checked={selectedPersona === p.id}
-                    onChange={() => setSelectedPersona(p.id)}
-                  />
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 12.5, fontWeight: 500 }}>{p.label}</div>
-                    <div style={{ fontSize: 10.5, color: "var(--text-muted)" }}>{p.desc}</div>
-                  </div>
-                  <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
-                    {Math.round(p.match * 100)}%
+
+            <div className="tag-group-label">
+              여정 단계 <span className="tag-group-sub">· 게스트가 어디쯤 · 8단계</span>
+            </div>
+            <div className="tag-cloud">
+              {(JOURNEY_STAGES as readonly JourneyStage[]).map((s) => {
+                const d = STAGE_DEFS[s]
+                const on = selectedStages.has(s)
+                return (
+                  <span
+                    key={s}
+                    className={`tag${on ? " tag--on" : ""}`}
+                    title={d.shortDesc}
+                    onClick={() => toggleSet(selectedStages, s, setSelectedStages)}
+                  >
+                    {d.ko} <span className="tag__sub">· {d.en}</span>
                   </span>
-                </label>
-              ))}
+                )
+              })}
             </div>
-          </div>
-        </div>
 
-        {/* CENTER: Generator */}
-        <div className="bcard">
-          <div className="bcard__header">
-            <div className="bcard__title">AI 토픽 제너레이터</div>
-            <span className="bchip" style={{ marginLeft: "auto" }}>
-              Gemini 2.5 Flash · Plott Blog Ideator
-            </span>
-          </div>
-          <div style={{ padding: 20 }}>
-            <label
-              style={{
-                fontSize: 11,
-                color: "var(--text-muted)",
-                fontWeight: 600,
-                textTransform: "uppercase",
-                letterSpacing: ".04em",
-              }}
-            >
-              생성 지시문
-            </label>
-            <textarea
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              disabled={phase !== "idle" && phase !== "done"}
-              style={{
-                width: "100%",
-                minHeight: 110,
-                marginTop: 8,
-                padding: 12,
-                border: "1px solid var(--border-default)",
-                borderRadius: "var(--r-md)",
-                resize: "vertical",
-                fontSize: 13,
-                lineHeight: 1.5,
-                background: "var(--bg-subtle)",
-                fontFamily: "inherit",
-              }}
-            />
-
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 16 }}>
-              <div>
-                <label style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600 }}>
-                  창의성 (Temperature)
-                </label>
-                <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 6 }}>
-                  <input
-                    type="range"
-                    min="0"
-                    max="1"
-                    step="0.1"
-                    value={temperature}
-                    onChange={(e) => setTemperature(parseFloat(e.target.value))}
-                    style={{ flex: 1 }}
-                  />
-                  <span className="text-mono" style={{ fontSize: 12, fontWeight: 600, minWidth: 28 }}>
-                    {temperature.toFixed(1)}
+            <div className="tag-group-label">
+              시즌 <span className="tag-group-sub">· 달력 기반 타이밍</span>
+            </div>
+            <div className="tag-cloud">
+              {SEASONS.map((s) => {
+                const on = selectedSeasons.has(s.id)
+                return (
+                  <span
+                    key={s.id}
+                    className={`tag${s.evergreen ? " tag--evergreen" : ""}${on ? " tag--on" : ""}`}
+                    title={s.hint}
+                    onClick={() => toggleSet(selectedSeasons, s.id, setSelectedSeasons)}
+                  >
+                    {s.ko}
                   </span>
-                </div>
-              </div>
-              <div>
-                <label style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600 }}>
-                  생성 개수
-                </label>
-                <select
-                  value={count}
-                  onChange={(e) => setCount(parseInt(e.target.value, 10))}
-                  disabled={phase !== "idle" && phase !== "done"}
-                  style={{
-                    width: "100%",
-                    marginTop: 6,
-                    padding: "7px 10px",
-                    border: "1px solid var(--border-default)",
-                    borderRadius: "var(--r-md)",
-                    background: "white",
-                  }}
-                >
-                  <option value={10}>10개 (15~25초)</option>
-                  <option value={20}>20개 (20~35초)</option>
-                  <option value={30}>30개 (25~45초)</option>
-                  <option value={50}>50개 (~60초)</option>
-                </select>
-              </div>
+                )
+              })}
             </div>
 
+            <div className="tag-group-label">
+              라이프 트리거 <span className="tag-group-sub">· 개인 상황</span>
+            </div>
+            <div className="tag-cloud">
+              {LIFE_TRIGGERS.map((t) => {
+                const on = selectedTriggers.has(t.id)
+                return (
+                  <span
+                    key={t.id}
+                    className={`tag${on ? " tag--on" : ""}`}
+                    title={t.hint}
+                    onClick={() => toggleSet(selectedTriggers, t.id, setSelectedTriggers)}
+                  >
+                    {t.ko}
+                  </span>
+                )
+              })}
+            </div>
+
+            <div className="tag-group-label">
+              Pain · 서비스 레버
+            </div>
+            <div className="tag-cloud">
+              {PAIN_TAGS.map((p) => {
+                const on = selectedPains.has(p.id)
+                return (
+                  <span
+                    key={p.id}
+                    className={`tag${on ? " tag--on" : ""}`}
+                    title={p.isServiceLever ? "플라트 차별점과 연결 가능" : undefined}
+                    onClick={() => toggleSet(selectedPains, p.id, setSelectedPains)}
+                  >
+                    {p.ko}
+                    {p.isServiceLever && <span className="tag__lever"> ⭐</span>}
+                  </span>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* Generate 버튼 */}
+          <div className="compass-generate">
             <button
               className="bbtn bbtn--primary bbtn--lg"
-              style={{ width: "100%", marginTop: 16, position: "relative", overflow: "hidden" }}
+              style={{ width: "100%", justifyContent: "center" }}
               onClick={handleGenerate}
               disabled={phase !== "idle" && phase !== "done"}
             >
               {phase === "idle" || phase === "done" ? (
                 <>
                   <Icon name="sparkles" size={15} />
-                  아이디어 생성
+                  {count}개 주제 생성
                 </>
               ) : (
                 <>
@@ -663,353 +531,906 @@ function IdeationPage() {
                 </>
               )}
             </button>
-
             {phase !== "idle" && phase !== "done" && (
-              <div style={{ marginTop: 12 }}>
+              <div style={{ marginTop: 8 }}>
                 <div className="bar-track" style={{ height: 4 }}>
-                  <div
-                    className="bar-fill"
-                    style={{
-                      width: `${progress}%`,
-                      transition: "width 1.2s linear",
-                    }}
-                  />
-                </div>
-                <div
-                  style={{
-                    marginTop: 8,
-                    fontSize: 11,
-                    color: "var(--text-muted)",
-                    display: "flex",
-                    justifyContent: "space-between",
-                  }}
-                >
-                  <span>{phaseLabel[phase]}</span>
-                  <span className="text-mono">{progress}%</span>
+                  <div className="bar-fill" style={{ width: `${progress}%`, transition: "width 1.2s linear" }} />
                 </div>
               </div>
             )}
-
-            {phase === "done" && (
-              <div
-                style={{
-                  marginTop: 10,
-                  padding: "8px 10px",
-                  background: "var(--success-bg)",
-                  border: "1px solid var(--success-border)",
-                  borderRadius: "var(--r-md)",
-                  fontSize: 11.5,
-                  color: "var(--success-fg)",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
-                }}
-              >
-                ✓ 완료 —
-                {lastRunMeta && (
-                  <>
-                    <b>{lastRunMeta.count}개</b> 생성 · {lastRunMeta.model} ·{" "}
-                    {(lastRunMeta.durationMs / 1000).toFixed(1)}s
-                  </>
-                )}
+            {phase === "done" && lastRunMeta && (
+              <div className="gen-done">
+                ✓ {lastRunMeta.count}개 생성 · {lastRunMeta.model} · {(lastRunMeta.durationMs / 1000).toFixed(1)}s
               </div>
             )}
-
-            <div
-              style={{
-                marginTop: 16,
-                padding: 12,
-                background: "var(--brand-50)",
-                borderRadius: "var(--r-md)",
-                border: "1px solid var(--brand-100)",
-              }}
-            >
-              <div style={{ fontSize: 12, fontWeight: 600, color: "var(--brand-700)", marginBottom: 4 }}>
-                💡 제안
-              </div>
-              <div style={{ fontSize: 12, color: "var(--text-secondary)", lineHeight: 1.5 }}>
-                인풋 소스 3개 이상 선택 시 클러스터 품질이 <b>+28%</b> 향상됩니다. 유학생 커뮤니티까지 함께 선택하면
-                <b> Arrive·Settle</b> 단계 주제 다양성이 좋아집니다.
-              </div>
-            </div>
+            <div className="gen-sub">Gemini 2.5 Flash · ~30초</div>
           </div>
-        </div>
+        </aside>
 
-        {/* RIGHT: Ideas stream */}
-        <div className="bcard">
-          <div className="bcard__header">
-            <div>
-              <div className="bcard__title">아이디어 스트림</div>
-              <div className="bcard__sub">
-                {ideas.length > 0
-                  ? `${selectedIds.size}/${ideas.length}개 선택 · 점수순`
-                  : "빈 상태"}
+        {/* ═══════════════════════════════════════════════════════
+           RIGHT: 검색 히어로 + 요약 스트립 + 매트릭스
+           ═══════════════════════════════════════════════════════ */}
+        <div className="right-col">
+          {/* 검색 히어로 */}
+          <div className="bcard">
+            <div className="search-hero">
+              <div className="search-hero__head">
+                <span className="search-hero__label">🔍 주제 탐색</span>
+                <span className="search-hero__sub">
+                  키워드 또는 문장으로 바로 생성 · 왼쪽 3축은 보조 필터로 동작
+                </span>
+                <div className="search-hero__mode">
+                  <button
+                    className={searchMode === "sentence" ? "on" : ""}
+                    onClick={() => setSearchMode("sentence")}
+                  >
+                    문장
+                  </button>
+                  <button
+                    className={searchMode === "keyword" ? "on" : ""}
+                    onClick={() => setSearchMode("keyword")}
+                  >
+                    키워드
+                  </button>
+                </div>
               </div>
-            </div>
-            {ideas.length === 0 && !showHistory && (
-              <button
-                className="bbtn bbtn--ghost bbtn--sm"
-                style={{ marginLeft: "auto" }}
-                onClick={loadHistory}
-                disabled={historyLoading}
-                title="DB에 저장된 지난 draft 아이디어 가져오기"
-              >
-                <Icon name="clock" size={12} /> {historyLoading ? "로드 중…" : "이전 아이디어"}
-              </button>
-            )}
-          </div>
 
-          {ideas.length > 0 && (
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
-                padding: "8px 16px",
-                borderBottom: "1px solid var(--border-subtle)",
-                background: "var(--bg-subtle)",
-              }}
-            >
-              <label
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 8,
-                  fontSize: 12,
-                  cursor: "pointer",
-                  fontWeight: 500,
-                }}
-              >
+              <div className="search-hero__row">
                 <input
-                  type="checkbox"
-                  checked={allSelected}
-                  ref={(el) => {
-                    if (el) el.indeterminate = someSelected
+                  className="search-hero__input"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onBlur={() => {
+                    if (searchMode === "sentence" && searchQuery.trim()) {
+                      applyHintsFromQuery(searchQuery)
+                    }
                   }}
-                  onChange={toggleSelectAll}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      if (searchMode === "sentence" && searchQuery.trim()) {
+                        applyHintsFromQuery(searchQuery)
+                      }
+                      handleGenerate()
+                    }
+                  }}
+                  placeholder={
+                    searchMode === "sentence"
+                      ? "예) 3월 입학 외국인 유학생이 보증금 없이 첫 달 숙소 구하는 법"
+                      : "예) 보증금 0원 단기임대 ARC"
+                  }
                 />
-                전체 {allSelected ? "해제" : "선택"}
-              </label>
-              <span style={{ marginLeft: "auto", fontSize: 11, color: "var(--text-muted)" }}>
-                높은 점수 → 낮은 점수 순
-              </span>
+                <button className="search-hero__submit" onClick={handleGenerate} disabled={phase !== "idle" && phase !== "done"}>
+                  ✨ 생성 →
+                </button>
+              </div>
+
+              <div className="search-hero__hints">
+                <span className="search-hero__hints-label">예시:</span>
+                {(searchMode === "sentence"
+                  ? [
+                      "보증금 없이 단기임대 예약 가능한가",
+                      "한달살기 가족 동반 성수동",
+                      "재계약 할지 귀국할지 결정",
+                    ]
+                  : [
+                      "ARC 발급 + 단기임대",
+                      "no deposit Seoul short-term",
+                      "보증금 0원 월세 시세",
+                    ]
+                ).map((h) => (
+                  <span
+                    key={h}
+                    className="search-hero__hint"
+                    onClick={() => {
+                      setSearchQuery(h)
+                      if (searchMode === "sentence") applyHintsFromQuery(h)
+                    }}
+                  >
+                    {h}
+                  </span>
+                ))}
+              </div>
+
+              <div className="search-hero__meta">
+                {searchMode === "sentence"
+                  ? "💡 문장은 의도를 파싱해 3축을 자동 추론합니다 (포커스 벗어날 때 반영)"
+                  : "🎯 키워드는 정확 매칭 기반 확장"}
+              </div>
             </div>
-          )}
-          <div style={{ maxHeight: 560, overflowY: "auto" }}>
-            {phase !== "idle" && phase !== "done" && ideas.length === 0 && (
-              <div
-                style={{
-                  padding: "40px 20px",
-                  textAlign: "center",
-                  color: "var(--text-muted)",
-                  fontSize: 13,
-                }}
-              >
-                <div style={{ marginBottom: 12 }}>
-                  <Spinner size={28} />
+          </div>
+
+          {/* 요약 스트립 */}
+          <div className="bcard">
+            <div className="summary-strip">
+              <div>
+                <div className="summary-strip__label">현재 설정 요약</div>
+                <div className="summary-strip__facets">
+                  {searchQuery.trim() && (
+                    <span className="active-search">
+                      🔍 "{searchQuery.length > 28 ? searchQuery.slice(0, 28) + "…" : searchQuery}"
+                      <span className="x" onClick={() => setSearchQuery("")}>✕</span>
+                    </span>
+                  )}
+                  {Array.from(selectedIntents).map((i) => (
+                    <span key={i} className="bchip bchip--brand">
+                      {INTENT_DEFS[i].emoji} {INTENT_DEFS[i].ko}
+                    </span>
+                  ))}
+                  {selectedSegments.size > 0 && (
+                    <span className="bchip">
+                      {Array.from(selectedSegments)
+                        .map((id) => PERSONAS.find((p) => p.id === id)?.label ?? id)
+                        .join(" + ")}
+                    </span>
+                  )}
+                  {selectedStages.size > 0 && (
+                    <span className="bchip">
+                      {Array.from(selectedStages).map((s) => STAGE_DEFS[s].ko).join(" · ")}
+                    </span>
+                  )}
+                  {selectedSeasons.size > 0 && (
+                    <span className="bchip">
+                      {Array.from(selectedSeasons)
+                        .map((id) => SEASONS.find((s) => s.id === id)?.ko ?? id)
+                        .join(" · ")}
+                    </span>
+                  )}
+                  {selectedPains.size > 0 && (
+                    <span className="bchip">
+                      {Array.from(selectedPains)
+                        .map((id) => PAIN_TAGS.find((p) => p.id === id)?.ko ?? id)
+                        .join(" · ")}
+                    </span>
+                  )}
                 </div>
+              </div>
+              <button className="advanced-toggle" onClick={() => setAdvancedOpen((v) => !v)}>
+                고급: 프롬프트 직접 편집 {advancedOpen ? "▴" : "▾"}
+              </button>
+            </div>
+            {advancedOpen && (
+              <div className="prompt-panel">
+                <label>추가 지시문 (3축 위에 덧붙여집니다)</label>
+                <textarea
+                  value={extraPrompt}
+                  onChange={(e) => setExtraPrompt(e.target.value)}
+                  placeholder="예: '체크리스트 포맷 선호', '경쟁사가 놓친 각도 집중' 등"
+                />
+                <div className="prompt-panel__row">
+                  <div>
+                    <label>창의성 (Temperature)</label>
+                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                      <input
+                        type="range"
+                        min="0"
+                        max="1"
+                        step="0.1"
+                        value={temperature}
+                        onChange={(e) => setTemperature(parseFloat(e.target.value))}
+                        style={{ flex: 1 }}
+                      />
+                      <span className="text-mono" style={{ fontSize: 12, fontWeight: 600, minWidth: 28 }}>
+                        {temperature.toFixed(1)}
+                      </span>
+                    </div>
+                  </div>
+                  <div>
+                    <label>생성 개수</label>
+                    <select value={count} onChange={(e) => setCount(parseInt(e.target.value, 10))}>
+                      <option value={10}>10개 (15~25초)</option>
+                      <option value={20}>20개 (20~35초)</option>
+                      <option value={30}>30개 (25~45초)</option>
+                      <option value={50}>50개 (~60초)</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* 매트릭스 */}
+          <div className="bcard">
+            <div className="bcard__header">
+              <div>
+                <div className="bcard__title">주제 매트릭스 — 여정 × 목적</div>
+                <div className="bcard__sub">
+                  {ideas.length > 0
+                    ? `${selectedIds.size} / ${ideas.length}개 선택 · 빈 셀은 갭`
+                    : "빈 상태 — 좌측 Compass 또는 🔍 검색으로 시작"}
+                </div>
+              </div>
+              {ideas.length === 0 && (
+                <button
+                  className="bbtn bbtn--ghost bbtn--sm"
+                  style={{ marginLeft: "auto" }}
+                  onClick={loadHistory}
+                  disabled={historyLoading}
+                  title="DB에 저장된 지난 draft 아이디어 가져오기"
+                >
+                  <Icon name="clock" size={12} /> {historyLoading ? "로드 중…" : "이전 아이디어"}
+                </button>
+              )}
+            </div>
+
+            {ideas.length > 0 && (
+              <div className="matrix-toolbar">
+                <span style={{ fontWeight: 600 }}>정렬:</span>
+                <select
+                  value={sortMode}
+                  onChange={(e) => setSortMode(e.target.value as "fit" | "volume" | "recent")}
+                  style={{ padding: "2px 6px", borderRadius: 6, border: "1px solid var(--border-default)" }}
+                >
+                  <option value="fit">fit_score ↓</option>
+                  <option value="volume">월검색량 ↓</option>
+                  <option value="recent">최신순</option>
+                </select>
+                <span className="matrix-toolbar__sep"></span>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={showOnlySelected}
+                    onChange={(e) => setShowOnlySelected(e.target.checked)}
+                  />{" "}
+                  선택만
+                </label>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={showOnlyHot}
+                    onChange={(e) => setShowOnlyHot(e.target.checked)}
+                  />{" "}
+                  🔥 Hot만
+                </label>
+              </div>
+            )}
+
+            {ideas.length === 0 && phase === "idle" && (
+              <div className="matrix-empty">
+                <div style={{ fontSize: 32, marginBottom: 8, opacity: 0.5 }}>✨</div>
+                아직 생성된 주제가 없어요.
+                <br />
+                왼쪽 <b style={{ color: "var(--brand-600)" }}>Compass</b> 또는 상단{" "}
+                <b style={{ color: "var(--brand-600)" }}>🔍 검색</b>에서 시작하세요.
+              </div>
+            )}
+
+            {phase !== "idle" && phase !== "done" && ideas.length === 0 && (
+              <div className="matrix-empty">
+                <div style={{ marginBottom: 12 }}><Spinner size={28} /></div>
                 {phaseLabel[phase]}
               </div>
             )}
 
-            {phase === "idle" && ideas.length === 0 && (
+            {ideas.length > 0 && (
               <div
+                className="matrix-grid"
                 style={{
-                  padding: "40px 24px",
-                  textAlign: "center",
-                  color: "var(--text-muted)",
-                  fontSize: 12.5,
-                  lineHeight: 1.6,
+                  gridTemplateColumns: `90px repeat(${matrixCols.length}, minmax(140px, 1fr))`,
                 }}
               >
-                <div style={{ fontSize: 32, marginBottom: 8, opacity: 0.5 }}>✨</div>
-                아직 생성된 주제가 없어요.
-                <br />
-                좌측에서 인풋·페르소나 고르고{" "}
-                <b style={{ color: "var(--brand-600)" }}>아이디어 생성</b>을 눌러보세요.
-                <br />
-                <br />
-                이전에 만든 주제를 불러오려면 상단의{" "}
-                <b style={{ color: "var(--brand-600)" }}>이전 아이디어</b> 버튼을 눌러주세요.
+                {/* 컬럼 헤더 */}
+                <div className="matrix-head matrix-head--corner">
+                  <div>여정 ＼ 목적</div>
+                  <div className="matrix-head__sub">행=단계 · 열=의도</div>
+                </div>
+                {matrixCols.map((id) => {
+                  const d = INTENT_DEFS[id]
+                  return (
+                    <div key={id} className="matrix-head">
+                      <span className="matrix-head__dot" style={{ background: d.color }} />
+                      <div>{d.emoji} {d.ko}</div>
+                      <div className="matrix-head__sub">{d.desc.split("—")[0]?.trim()}</div>
+                    </div>
+                  )
+                })}
+
+                {/* 행 */}
+                {matrixRows.map((stage) => {
+                  const stageDef = STAGE_DEFS[stage]
+                  return (
+                    <div key={stage} style={{ display: "contents" }}>
+                      <div className="matrix-rowhead">
+                        <div>{stageDef.ko}</div>
+                        <div className="matrix-rowhead__sub">{stageDef.en} · {stageDef.shortDesc}</div>
+                      </div>
+                      {matrixCols.map((intent) => {
+                        const cellIdeas = matrixBuckets.get(`${stage}|${intent}`) ?? []
+                        return (
+                          <div key={intent} className="matrix-cell">
+                            {cellIdeas.length === 0 ? (
+                              <div className="matrix-empty-cell">— 갭 —</div>
+                            ) : (
+                              cellIdeas.map((idea) => {
+                                const score = idea.fit_score ?? 0
+                                const hot = isHotSignal(idea.signal?.kind)
+                                const on = selectedIds.has(idea.id)
+                                return (
+                                  <div
+                                    key={idea.id}
+                                    className={`tcard${on ? " tcard--on" : ""}`}
+                                    onClick={() => toggleSelect(idea.id)}
+                                    title={idea.rationale ?? undefined}
+                                  >
+                                    <div
+                                      className="tcard__score"
+                                      style={{
+                                        background: `conic-gradient(var(--brand-500) ${score * 3.6}deg, var(--bg-muted) 0)`,
+                                      }}
+                                    >
+                                      <div className="tcard__score-inner">{score}</div>
+                                    </div>
+                                    <div className="tcard__title">
+                                      {hot && <span className="tcard__fire">🔥</span>}
+                                      {idea.title}
+                                      <div className="tcard__meta">
+                                        <span className="tcard__vol">{formatVolume(idea.volume)}/월</span>
+                                        {idea.signal?.kind && (
+                                          <span className="tcard__sig">{idea.signal.kind}</span>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+                                )
+                              })
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )
+                })}
               </div>
             )}
 
-            {sortedIdeas.map((i) => {
-              const clusterLabel = i.cluster ? CLUSTER_LABEL[i.cluster] ?? i.cluster : "—"
-              const score = i.fit_score ?? 0
-              const hot = isHotSignal(i.signal?.kind)
-              const checked = selectedIds.has(i.id)
-              return (
-                <div
-                  key={i.id}
-                  onClick={(e) => {
-                    const tag = (e.target as HTMLElement).tagName
-                    if (tag !== "INPUT" && tag !== "BUTTON") toggleSelect(i.id)
-                  }}
-                  style={{
-                    padding: "12px 16px",
-                    borderBottom: "1px solid var(--border-subtle)",
-                    display: "flex",
-                    alignItems: "flex-start",
-                    gap: 10,
-                    cursor: "pointer",
-                    background: checked ? "var(--brand-50)" : "transparent",
-                    transition: "background 0.1s",
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={checked}
-                    onChange={() => toggleSelect(i.id)}
-                    style={{ marginTop: 10, flexShrink: 0, cursor: "pointer" }}
-                  />
-                  <div
-                    style={{
-                      width: 32,
-                      height: 32,
-                      borderRadius: 8,
-                      background: `conic-gradient(var(--brand-500) ${score * 3.6}deg, var(--bg-muted) 0)`,
-                      display: "grid",
-                      placeItems: "center",
-                      flexShrink: 0,
-                      position: "relative",
-                    }}
-                    title={i.signal?.detail ?? ""}
-                  >
-                    <div
-                      style={{
-                        position: "absolute",
-                        inset: 2,
-                        background: "white",
-                        borderRadius: 6,
-                        display: "grid",
-                        placeItems: "center",
-                        fontSize: 10,
-                        fontWeight: 700,
-                      }}
-                    >
-                      {score}
-                    </div>
-                  </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, lineHeight: 1.35, marginBottom: 4 }}>
-                      {hot && (
-                        <span
-                          style={{
-                            marginRight: 6,
-                            fontSize: 10,
-                            fontWeight: 700,
-                            color: "var(--accent-rose)",
-                          }}
-                        >
-                          🔥
-                        </span>
-                      )}
-                      {i.title}
-                    </div>
-                    <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-                      <span className="bchip">#{clusterLabel}</span>
-                      <span className="bchip bchip--info">{formatVolume(i.volume)}</span>
-                      {i.signal?.kind && (
-                        <span className="bchip" style={{ color: "var(--text-muted)" }}>
-                          {i.signal.kind}
-                        </span>
-                      )}
-                    </div>
-                    {i.rationale && (
-                      <div
-                        style={{
-                          marginTop: 4,
-                          fontSize: 11,
-                          color: "var(--text-muted)",
-                          lineHeight: 1.4,
-                        }}
-                      >
-                        {i.rationale}
-                      </div>
-                    )}
-                  </div>
+            {ideas.length > 0 && (
+              <div className="selection-bar">
+                <div>
+                  <span className="selection-bar__count">{selectedIds.size}</span>
+                  <span style={{ color: "var(--text-muted)" }}> / {ideas.length}개 선택</span>
+                </div>
+                <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
                   <button
-                    className="bbtn bbtn--ghost bbtn--sm"
-                    style={{ padding: "4px 6px" }}
-                    title="버리기 (숨김)"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      discardIdea(i.id)
+                    className="bbtn bbtn--subtle"
+                    onClick={() => {
+                      setIdeas([])
+                      setSelectedIds(new Set())
                     }}
+                    disabled={promoting}
                   >
-                    🗑
+                    화면 비우기
+                  </button>
+                  <button
+                    className="bbtn bbtn--primary"
+                    onClick={promoteAndGoToFunnel}
+                    disabled={selectedIds.size === 0 || promoting}
+                  >
+                    {promoting ? (
+                      <>
+                        <Spinner />
+                        <span style={{ marginLeft: 4 }}>넘기는 중…</span>
+                      </>
+                    ) : (
+                      <>
+                        {selectedIds.size}개 → 브리프 작성으로 <Icon name="chevron" size={12} />
+                      </>
+                    )}
                   </button>
                 </div>
-              )
-            })}
-          </div>
-          <div
-            style={{
-              padding: "12px 16px",
-              borderTop: "1px solid var(--border-subtle)",
-              display: "flex",
-              gap: 8,
-            }}
-          >
-            <button
-              className="bbtn bbtn--subtle"
-              style={{ flex: 1 }}
-              onClick={() => {
-                setIdeas([])
-                setSelectedIds(new Set())
-              }}
-              disabled={ideas.length === 0 || promoting}
-              title="현재 스트림 비우기 (DB 는 유지)"
-            >
-              화면 비우기
-            </button>
-            <button
-              className="bbtn bbtn--primary"
-              style={{ flex: 2 }}
-              onClick={promoteAndGoToFunnel}
-              disabled={selectedIds.size === 0 || promoting}
-              title={
-                selectedIds.size === 0
-                  ? "최소 1개 이상 선택해야 넘길 수 있어요"
-                  : `${selectedIds.size}개를 shortlist 로 등록 후 주제선정 퍼널로 이동`
-              }
-            >
-              {promoting ? (
-                <>
-                  <Spinner />
-                  <span style={{ marginLeft: 4 }}>넘기는 중…</span>
-                </>
-              ) : (
-                <>
-                  {selectedIds.size > 0 ? `${selectedIds.size}개 ` : ""}퍼널로 넘기기{" "}
-                  <Icon name="chevron" size={12} />
-                </>
-              )}
-            </button>
+              </div>
+            )}
           </div>
         </div>
       </div>
 
-      <style>{`
-        .blog-shell .ideation-grid {
+      <style jsx>{`
+        .bpage :global(.ideation-grid) {
           display: grid;
-          grid-template-columns: 260px 1fr 380px;
+          grid-template-columns: 320px 1fr;
           gap: 14px;
           align-items: start;
         }
         @media (max-width: 1180px) {
-          .blog-shell .ideation-grid { grid-template-columns: 1fr; }
+          .bpage :global(.ideation-grid) { grid-template-columns: 1fr; }
         }
-        @keyframes ideation-spin {
-          to { transform: rotate(360deg); }
+
+        /* ── 왼쪽 Compass ────────────────────────────── */
+        .compass-card {
+          position: sticky;
+          top: 12px;
+          max-height: calc(100vh - 24px);
+          overflow-y: auto;
         }
+        .compass-section {
+          padding: 14px 16px;
+          border-top: 1px solid var(--border-subtle);
+        }
+        .compass-label {
+          font-size: 10.5px;
+          font-weight: 700;
+          color: var(--text-muted);
+          text-transform: uppercase;
+          letter-spacing: 0.08em;
+          margin-bottom: 10px;
+          display: flex;
+          align-items: center;
+          gap: 6px;
+        }
+        .compass-label__count {
+          margin-left: auto;
+          font-size: 10px;
+          color: var(--brand-700);
+          background: var(--brand-50);
+          border: 1px solid var(--brand-200);
+          padding: 1px 6px;
+          border-radius: 999px;
+        }
+
+        .intent-list { display: flex; flex-direction: column; gap: 3px; }
+        .intent-row {
+          display: flex;
+          gap: 8px;
+          padding: 8px 10px;
+          border-radius: 10px;
+          cursor: pointer;
+          border: 1px solid transparent;
+          align-items: flex-start;
+        }
+        .intent-row:hover { background: var(--bg-subtle); }
+        .intent-row--on {
+          background: var(--brand-50);
+          border-color: var(--brand-200);
+        }
+        .intent-dot {
+          width: 8px;
+          height: 8px;
+          border-radius: 999px;
+          margin-top: 6px;
+          flex-shrink: 0;
+        }
+        .intent-emoji { font-size: 15px; width: 20px; text-align: center; flex-shrink: 0; line-height: 1.3; }
+        .intent-name { font-weight: 700; font-size: 12.5px; }
+        .intent-en { font-size: 10px; color: var(--text-muted); font-weight: 500; }
+        .intent-desc { font-size: 11px; color: var(--text-muted); margin-top: 1px; }
+
+        .seg-row {
+          display: flex;
+          gap: 8px;
+          align-items: center;
+          padding: 6px 8px;
+          border-radius: 8px;
+          cursor: pointer;
+          font-size: 12px;
+        }
+        .seg-row:hover { background: var(--bg-subtle); }
+        .seg-row--on { background: var(--brand-50); }
+        .seg-row input { accent-color: var(--brand-600); }
+        .seg-name { font-weight: 600; }
+        .seg-desc { font-size: 10.5px; color: var(--text-muted); }
+        .seg-meta { font-size: 10.5px; color: var(--text-muted); margin-left: auto; }
+
+        .tag-group-label {
+          font-size: 11px;
+          color: var(--text-muted);
+          margin: 10px 0 6px;
+          font-weight: 600;
+        }
+        .tag-group-sub { color: var(--text-muted); font-weight: 400; }
+        .tag-cloud { display: flex; flex-wrap: wrap; gap: 5px; }
+        .tag {
+          font-size: 11px;
+          padding: 4px 9px;
+          border-radius: 999px;
+          cursor: pointer;
+          background: white;
+          border: 1px solid var(--border-default);
+          color: var(--text-secondary);
+          user-select: none;
+        }
+        .tag:hover { border-color: var(--brand-200); }
+        .tag--on {
+          background: var(--brand-600);
+          color: white;
+          border-color: var(--brand-600);
+        }
+        .tag__sub { opacity: 0.7; }
+        .tag--evergreen {
+          border-style: dashed;
+          border-color: var(--border-strong);
+          color: var(--text-secondary);
+        }
+        .tag--evergreen.tag--on { background: #111827; color: white; border-color: #111827; border-style: solid; }
+        .tag--evergreen::before { content: "∞ "; opacity: 0.7; }
+        .tag__lever { font-size: 9px; }
+
+        .compass-generate {
+          padding: 14px 16px;
+          border-top: 1px solid var(--border-subtle);
+          background: var(--bg-subtle);
+          position: sticky;
+          bottom: 0;
+        }
+        .gen-done {
+          margin-top: 8px;
+          padding: 6px 10px;
+          background: var(--success-bg);
+          border: 1px solid var(--success-border);
+          border-radius: var(--r-md);
+          font-size: 11px;
+          color: var(--success-fg);
+        }
+        .gen-sub {
+          margin-top: 8px;
+          font-size: 10.5px;
+          color: var(--text-muted);
+          text-align: center;
+        }
+
+        /* ── 오른쪽 칼럼 ──────────────────────────── */
+        .right-col { display: flex; flex-direction: column; gap: 14px; }
+
+        /* 검색 히어로 */
+        .search-hero {
+          padding: 16px 18px 18px;
+          background: linear-gradient(135deg, var(--brand-50) 0%, #f6f0ff 60%, #fff5f8 100%);
+        }
+        .search-hero__head {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          margin-bottom: 10px;
+          flex-wrap: wrap;
+        }
+        .search-hero__label {
+          font-size: 11px;
+          font-weight: 700;
+          color: var(--brand-700);
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+        }
+        .search-hero__sub { font-size: 10.5px; color: var(--text-secondary); font-weight: 500; }
+        .search-hero__mode {
+          display: inline-flex;
+          gap: 0;
+          background: white;
+          border: 1px solid var(--brand-200);
+          border-radius: 999px;
+          padding: 2px;
+          margin-left: auto;
+        }
+        .search-hero__mode button {
+          font-size: 10.5px;
+          font-weight: 600;
+          padding: 4px 10px;
+          border: 0;
+          background: transparent;
+          border-radius: 999px;
+          cursor: pointer;
+          color: var(--text-secondary);
+        }
+        .search-hero__mode button.on { background: var(--brand-600); color: white; }
+
+        .search-hero__row {
+          display: flex;
+          gap: 8px;
+          align-items: stretch;
+        }
+        .search-hero__input {
+          flex: 1;
+          padding: 12px 14px;
+          font-size: 14px;
+          border-radius: 10px;
+          border: 1px solid var(--brand-200);
+          background: white;
+          font-family: inherit;
+          color: var(--text-primary);
+        }
+        .search-hero__input:focus {
+          outline: none;
+          border-color: var(--brand-500);
+          box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
+        }
+        .search-hero__submit {
+          padding: 0 18px;
+          border-radius: 10px;
+          border: 0;
+          background: var(--brand-600);
+          color: white;
+          font-weight: 700;
+          font-size: 13px;
+          cursor: pointer;
+          white-space: nowrap;
+        }
+        .search-hero__submit:hover:not(:disabled) { background: var(--brand-700); }
+        .search-hero__submit:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .search-hero__hints { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+        .search-hero__hints-label {
+          font-size: 11px;
+          color: var(--text-secondary);
+          font-weight: 600;
+          align-self: center;
+          margin-right: 4px;
+        }
+        .search-hero__hint {
+          font-size: 11px;
+          padding: 3px 9px;
+          border-radius: 999px;
+          background: white;
+          border: 1px solid var(--brand-200);
+          color: var(--brand-700);
+          cursor: pointer;
+        }
+        .search-hero__hint:hover { background: var(--brand-50); }
+        .search-hero__meta {
+          font-size: 11px;
+          color: var(--text-secondary);
+          margin-top: 8px;
+        }
+
+        /* 요약 스트립 */
+        .summary-strip {
+          display: grid;
+          grid-template-columns: 1fr auto;
+          gap: 14px;
+          align-items: center;
+          padding: 12px 16px;
+        }
+        .summary-strip__label {
+          font-size: 11px;
+          color: var(--text-muted);
+          font-weight: 600;
+          margin-bottom: 6px;
+        }
+        .summary-strip__facets { display: flex; flex-wrap: wrap; gap: 6px; }
+        .advanced-toggle {
+          font-size: 11.5px;
+          color: var(--brand-600);
+          cursor: pointer;
+          background: none;
+          border: 0;
+          font-weight: 600;
+        }
+        .active-search {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          background: #fff3f6;
+          border: 1px solid #ffc9d6;
+          color: #9f1239;
+          padding: 3px 10px;
+          border-radius: 999px;
+          font-size: 11px;
+          font-weight: 600;
+        }
+        .active-search .x { cursor: pointer; opacity: 0.7; }
+
+        .prompt-panel {
+          padding: 14px 16px;
+          border-top: 1px solid var(--border-subtle);
+          background: var(--bg-subtle);
+        }
+        .prompt-panel label {
+          font-size: 11px;
+          color: var(--text-muted);
+          font-weight: 600;
+          display: block;
+          margin-bottom: 4px;
+        }
+        .prompt-panel textarea {
+          width: 100%;
+          min-height: 60px;
+          padding: 8px 10px;
+          border: 1px solid var(--border-default);
+          border-radius: var(--r-md);
+          resize: vertical;
+          font-family: inherit;
+          font-size: 12.5px;
+          background: white;
+        }
+        .prompt-panel__row {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 14px;
+          margin-top: 10px;
+        }
+        .prompt-panel__row select {
+          width: 100%;
+          padding: 5px 8px;
+          border: 1px solid var(--border-default);
+          border-radius: var(--r-md);
+          background: white;
+        }
+
+        /* 매트릭스 */
+        .matrix-toolbar {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          padding: 8px 14px;
+          border-bottom: 1px solid var(--border-subtle);
+          background: var(--bg-subtle);
+          font-size: 12px;
+          flex-wrap: wrap;
+        }
+        .matrix-toolbar__sep {
+          width: 1px;
+          height: 14px;
+          background: var(--border-default);
+          margin: 0 2px;
+        }
+        .matrix-grid {
+          display: grid;
+          grid-auto-rows: auto;
+          overflow-x: auto;
+        }
+        .matrix-head {
+          padding: 8px 6px;
+          text-align: center;
+          font-size: 11px;
+          font-weight: 700;
+          background: var(--bg-subtle);
+          border-bottom: 1px solid var(--border-default);
+          border-right: 1px solid var(--border-default);
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+          align-items: center;
+          justify-content: center;
+          position: sticky;
+          top: 0;
+          z-index: 1;
+        }
+        .matrix-head--corner { background: var(--bg-subtle); }
+        .matrix-head__sub { font-size: 9.5px; color: var(--text-muted); font-weight: 500; }
+        .matrix-head__dot { width: 10px; height: 10px; border-radius: 999px; }
+
+        .matrix-rowhead {
+          display: flex;
+          flex-direction: column;
+          align-items: flex-start;
+          justify-content: center;
+          padding: 8px 10px;
+          font-size: 11px;
+          font-weight: 700;
+          color: var(--text-secondary);
+          background: var(--bg-subtle);
+          border-right: 1px solid var(--border-default);
+          border-bottom: 1px solid var(--border-subtle);
+          min-height: 60px;
+        }
+        .matrix-rowhead__sub {
+          font-size: 9.5px;
+          color: var(--text-muted);
+          font-weight: 500;
+          margin-top: 2px;
+        }
+        .matrix-cell {
+          border-right: 1px solid var(--border-subtle);
+          border-bottom: 1px solid var(--border-subtle);
+          padding: 6px;
+          min-height: 60px;
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+          background: var(--bg-surface);
+        }
+
+        .tcard {
+          background: white;
+          border: 1px solid var(--border-default);
+          border-radius: 8px;
+          padding: 6px 8px;
+          font-size: 11.5px;
+          line-height: 1.35;
+          cursor: pointer;
+          display: flex;
+          gap: 7px;
+          align-items: flex-start;
+          transition: border-color 0.12s, background 0.12s;
+        }
+        .tcard:hover { border-color: var(--brand-200); background: var(--brand-50); }
+        .tcard--on {
+          background: var(--brand-50);
+          border-color: var(--brand-500);
+          box-shadow: 0 0 0 1px var(--brand-500) inset;
+        }
+        .tcard__score {
+          flex-shrink: 0;
+          width: 20px;
+          height: 20px;
+          border-radius: 999px;
+          display: grid;
+          place-items: center;
+          font-family: ui-monospace, monospace;
+          position: relative;
+        }
+        .tcard__score-inner {
+          position: absolute;
+          inset: 2px;
+          background: white;
+          border-radius: 999px;
+          display: grid;
+          place-items: center;
+          font-size: 9px;
+          font-weight: 800;
+        }
+        .tcard__title { flex: 1; min-width: 0; word-break: break-word; }
+        .tcard__fire { color: var(--accent-rose); font-size: 10px; margin-right: 2px; }
+        .tcard__meta {
+          margin-top: 3px;
+          display: flex;
+          gap: 4px;
+          flex-wrap: wrap;
+          font-size: 9.5px;
+          color: var(--text-muted);
+        }
+        .tcard__vol { font-family: ui-monospace, monospace; }
+        .tcard__sig { color: var(--text-muted); }
+
+        .matrix-empty-cell {
+          border: 1.5px dashed var(--border-strong);
+          border-radius: 6px;
+          padding: 6px;
+          font-size: 10px;
+          color: var(--text-muted);
+          text-align: center;
+        }
+
+        .matrix-empty {
+          padding: 48px 20px;
+          text-align: center;
+          color: var(--text-muted);
+          font-size: 13px;
+          line-height: 1.6;
+        }
+
+        .selection-bar {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          padding: 12px 16px;
+          border-top: 1px solid var(--border-subtle);
+        }
+        .selection-bar__count {
+          font-size: 16px;
+          font-weight: 800;
+          color: var(--brand-700);
+        }
+
+        /* Error banner */
+        .err-banner {
+          margin-bottom: 16px;
+          padding: 10px 14px;
+          background: var(--danger-bg);
+          border: 1px solid var(--danger-border);
+          color: var(--danger-fg);
+          border-radius: var(--r-md);
+          font-size: 13px;
+          display: flex;
+          gap: 8px;
+          align-items: flex-start;
+        }
+        .err-x {
+          font-size: 12px;
+          color: var(--danger-fg);
+          cursor: pointer;
+          background: transparent;
+          border: 0;
+        }
+      `}</style>
+
+      <style>{`
+        @keyframes ideation-spin { to { transform: rotate(360deg); } }
         .blog-shell .ideation-spinner {
           display: inline-block;
           border: 2px solid rgba(255,255,255,0.3);
           border-top-color: white;
           border-radius: 50%;
           animation: ideation-spin 0.8s linear infinite;
+        }
+        .blog-shell :global(.ideation-spinner--dark) {
+          border-color: rgba(99,102,241,0.15);
+          border-top-color: var(--brand-600);
         }
       `}</style>
     </div>
@@ -1020,10 +1441,7 @@ function Spinner({ size = 14 }: { size?: number }) {
   return (
     <span
       className="ideation-spinner"
-      style={{
-        width: size,
-        height: size,
-      }}
+      style={{ width: size, height: size }}
     />
   )
 }

@@ -3,10 +3,17 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import { Icon, PageHeader } from "../_ui"
+import { CLUSTER_LABEL, INTENT_DEFS, type JourneyStage, type Intent } from "@/lib/ideation/compass"
 
-const CLUSTER_LABEL: Record<string, string> = {
-  consider: "Consider", prepare: "Prepare", arrive: "Arrive", settle: "Settle",
-  live: "Live", explore: "Explore", change: "Change",
+function stageLabel(c: string | null | undefined): string {
+  if (!c) return "—"
+  return (CLUSTER_LABEL as Record<string, string>)[c] ?? c
+}
+
+function intentLabel(i: string | null | undefined): string | null {
+  if (!i) return null
+  const def = INTENT_DEFS[i as Intent]
+  return def ? `${def.emoji} ${def.ko}` : i
 }
 
 interface ShortlistedIdea {
@@ -16,7 +23,7 @@ interface ShortlistedIdea {
   rationale: string | null
   volume: number | null
   fit_score: number | null
-  signal: { kind?: string; detail?: string } | null
+  signal: { kind?: string; detail?: string; intent?: string } | null
   related_keywords: string[] | null
   status: string
   created_at: string
@@ -139,9 +146,9 @@ export default function TopicsPage() {
   return (
     <div className="bpage fade-up">
       <PageHeader
-        eyebrow="STAGE 03 · TOPIC SELECTION"
-        title="주제선정 + 브리프"
-        sub="아이데이션에서 shortlist 된 후보 중 이번 라운드에 작성할 주제 1개를 확정하고, Content Strategist 가 상세 브리프를 만듭니다. 브리프가 다음 단계 Copywriter 의 입력이 됩니다."
+        eyebrow="STAGE 03 · BRIEF"
+        title="브리프 작성"
+        sub="아이데이션에서 선정된 주제 중 이번 라운드에 작성할 1개를 고르면, Content Strategist가 아웃라인·페르소나·KPI·CTA 포인트를 담은 상세 브리프를 만듭니다. 다음 단계(콘텐츠 제작)의 입력이 됩니다."
       />
 
       {error && (
@@ -253,7 +260,10 @@ export default function TopicsPage() {
                       {i.title}
                     </div>
                     <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 4 }}>
-                      <span className="bchip">#{i.cluster ? CLUSTER_LABEL[i.cluster] ?? i.cluster : "—"}</span>
+                      <span className="bchip">#{stageLabel(i.cluster)}</span>
+                      {i.signal?.intent && (
+                        <span className="bchip bchip--brand">{intentLabel(i.signal.intent)}</span>
+                      )}
                       {i.volume && (
                         <span className="bchip bchip--info">
                           {i.volume >= 1000 ? `${(i.volume / 1000).toFixed(0)}K` : i.volume}
@@ -305,9 +315,10 @@ export default function TopicsPage() {
                 </div>
                 <div style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.4 }}>{selectedIdea.title}</div>
                 <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 6 }}>
-                  <span className="bchip">
-                    #{selectedIdea.cluster ? CLUSTER_LABEL[selectedIdea.cluster] ?? selectedIdea.cluster : "—"}
-                  </span>
+                  <span className="bchip">#{stageLabel(selectedIdea.cluster)}</span>
+                  {selectedIdea.signal?.intent && (
+                    <span className="bchip bchip--brand">{intentLabel(selectedIdea.signal.intent)}</span>
+                  )}
                   {selectedIdea.fit_score != null && (
                     <span className="bchip bchip--brand">fit {selectedIdea.fit_score}</span>
                   )}

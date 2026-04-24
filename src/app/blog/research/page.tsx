@@ -1,8 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { useRouter } from "next/navigation"
-import { Icon, PageHeader } from "../_ui"
+import { PageHeader } from "../_ui"
 
 type Category = "location" | "campus" | "type" | "duration" | "option" | "situation" | "foreigner" | "seasonal"
 type Competition = "low" | "medium" | "high" | "unknown"
@@ -48,7 +47,6 @@ async function safeFetchJson<T>(input: RequestInfo, init?: RequestInit): Promise
 }
 
 export default function ResearchPage() {
-  const router = useRouter()
   const [keywords, setKeywords] = useState<Keyword[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
@@ -57,7 +55,6 @@ export default function ResearchPage() {
   const [activeCat, setActiveCat] = useState<"all" | Category>("all")
   const [sort, setSort] = useState<Sort>("total")
   const [search, setSearch] = useState("")
-  const [selected, setSelected] = useState<Set<string>>(new Set())
 
   const load = useCallback(
     async (s: Sort = sort) => {
@@ -100,30 +97,25 @@ export default function ResearchPage() {
     return m
   }, [keywords])
 
-  const toggleSelect = (id: string) => {
-    setSelected((prev) => {
-      const n = new Set(prev)
-      if (n.has(id)) n.delete(id)
-      else n.add(id)
-      return n
-    })
-  }
-  const allVisibleSelected = visible.length > 0 && visible.every((k) => selected.has(k.id))
-  const someSelected = selected.size > 0 && !allVisibleSelected
-  const toggleAllVisible = () => {
-    if (allVisibleSelected) {
-      const n = new Set(selected)
-      visible.forEach((k) => n.delete(k.id))
-      setSelected(n)
-    } else {
-      const n = new Set(selected)
-      visible.forEach((k) => n.add(k.id))
-      setSelected(n)
+  /* 요약 지표 */
+  const summary = useMemo(() => {
+    const enriched = keywords.filter((k) => k.monthly_total != null)
+    const totalVol = enriched.reduce((s, k) => s + (k.monthly_total ?? 0), 0)
+    const top = [...enriched].sort((a, b) => (b.monthly_total ?? 0) - (a.monthly_total ?? 0))[0]
+    const rising = enriched.filter((k) => k.competition === "low" && (k.monthly_total ?? 0) > 1000).length
+    return {
+      count: keywords.length,
+      enriched: enriched.length,
+      totalVol,
+      topLabel: top?.label ?? "—",
+      topVol: top?.monthly_total ?? 0,
+      rising,
     }
-  }
+  }, [keywords])
 
-  const refreshSelected = async () => {
-    if (selected.size === 0) return
+  const refreshVisible = async () => {
+    const ids = visible.map((k) => k.id)
+    if (ids.length === 0) return
     setRefreshing(true)
     try {
       const j = await safeFetchJson<{ ok: boolean; refreshed?: number; error?: string }>(
@@ -131,7 +123,7 @@ export default function ResearchPage() {
         {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ ids: Array.from(selected) }),
+          body: JSON.stringify({ ids }),
         }
       )
       if (!j.ok) throw new Error(j.error ?? "refresh 실패")
@@ -143,22 +135,18 @@ export default function ResearchPage() {
     }
   }
 
-  const goToIdeation = () => {
-    if (selected.size === 0) return
-    const ids = Array.from(selected).join(",")
-    router.push(`/blog/ideation?keywords=${encodeURIComponent(ids)}`)
-  }
-
   return (
     <div className="bpage fade-up">
       <PageHeader
-        eyebrow="STAGE 01 · RESEARCH"
-        title="리서치 — 키워드 라이브러리"
-        sub="네이버 검색광고 데이터 기반 실제 월 검색량. 이번 라운드에 쓸 키워드를 체크해서 아이데이션으로 넘기면 주제가 자동 확장됩니다."
+        eyebrow="STAGE 01 · TRENDS"
+        title="키워드 트렌드"
+        sub="단기임대 시장의 월 검색량·경쟁도를 관찰합니다. 실제 주제 생성·선정은 다음 단계(아이데이션)에서 이루어져요."
         actions={[
           {
-            label: refreshing ? "새로고침 중…" : `🔄 선택 수치 새로고침 (${selected.size})`,
-            onClick: refreshSelected,
+            label: refreshing
+              ? "새로고침 중…"
+              : `🔄 현재 화면 수치 새로고침 (${visible.length})`,
+            onClick: refreshVisible,
           },
         ]}
       />
@@ -173,14 +161,37 @@ export default function ResearchPage() {
             color: "var(--danger-fg)",
             borderRadius: "var(--r-md)",
             fontSize: 13,
+            display: "flex",
+            gap: 8,
+            alignItems: "center",
           }}
         >
-          ⚠️ {error}
-          <button onClick={() => setError(null)} style={{ marginLeft: "auto", color: "var(--danger-fg)" }}>
+          <span>⚠️</span>
+          <span style={{ flex: 1 }}>{error}</span>
+          <button onClick={() => setError(null)} style={{ color: "var(--danger-fg)", background: "transparent", border: 0 }}>
             ✕
           </button>
         </div>
       )}
+
+      {/* 요약 KPI 4장 */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(4, 1fr)",
+          gap: 12,
+          marginBottom: 14,
+        }}
+      >
+        <SummaryTile label="트래킹 키워드" value={`${summary.count}개`} sub={`실측 수치 ${summary.enriched}개`} />
+        <SummaryTile label="전체 월 검색량" value={summary.totalVol.toLocaleString()} sub="합계" accent />
+        <SummaryTile
+          label="TOP 키워드"
+          value={summary.topLabel}
+          sub={summary.topVol > 0 ? `월 ${summary.topVol.toLocaleString()}회` : "—"}
+        />
+        <SummaryTile label="저경쟁 기회" value={`${summary.rising}개`} sub="월 1K+ · 경쟁 낮음" />
+      </div>
 
       {/* 카테고리 필터 */}
       <div className="bcard" style={{ marginBottom: 14 }}>
@@ -254,77 +265,31 @@ export default function ResearchPage() {
       {/* 키워드 테이블 */}
       <div className="bcard">
         <div className="bcard__header">
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <label
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 6,
-                fontSize: 12,
-                fontWeight: 600,
-                cursor: "pointer",
-              }}
-            >
-              <input
-                type="checkbox"
-                checked={allVisibleSelected}
-                ref={(el) => {
-                  if (el) el.indeterminate = someSelected
-                }}
-                onChange={toggleAllVisible}
-              />
-              전체 {allVisibleSelected ? "해제" : "선택"}
-            </label>
-            <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
-              {loading ? "불러오는 중…" : `${selected.size}/${visible.length}개 선택 · ${visible.length}개 표시`}
-            </span>
+          <div>
+            <div className="bcard__title">키워드 목록</div>
+            <div className="bcard__sub">
+              {loading ? "불러오는 중…" : `${visible.length}개 표시`}
+            </div>
           </div>
-          <button
-            className="bbtn bbtn--primary bbtn--sm"
-            style={{ marginLeft: "auto" }}
-            onClick={goToIdeation}
-            disabled={selected.size === 0}
-          >
-            {selected.size > 0 ? `${selected.size}개로 ` : ""}아이데이션 <Icon name="chevron" size={12} />
-          </button>
         </div>
         <div style={{ overflow: "auto" }}>
           <table className="btbl">
             <thead>
               <tr>
-                <th style={{ width: 30 }}></th>
                 <th>키워드</th>
-                <th style={{ width: 90 }}>카테고리</th>
-                <th style={{ width: 70, textAlign: "right" }}>PC</th>
-                <th style={{ width: 80, textAlign: "right" }}>모바일</th>
-                <th style={{ width: 90, textAlign: "right" }}>월 합계</th>
-                <th style={{ width: 90 }}>경쟁도</th>
+                <th style={{ width: 110 }}>카테고리</th>
+                <th style={{ width: 80, textAlign: "right" }}>PC</th>
+                <th style={{ width: 90, textAlign: "right" }}>모바일</th>
+                <th style={{ width: 100, textAlign: "right" }}>월 합계</th>
+                <th style={{ width: 100 }}>경쟁도</th>
               </tr>
             </thead>
             <tbody>
               {visible.map((k) => {
                 const cat = k.category ? CAT_META[k.category] : null
                 const comp = COMP_STYLE[k.competition ?? "unknown"]
-                const checked = selected.has(k.id)
                 return (
-                  <tr
-                    key={k.id}
-                    onClick={(e) => {
-                      if ((e.target as HTMLElement).tagName !== "INPUT") toggleSelect(k.id)
-                    }}
-                    style={{
-                      cursor: "pointer",
-                      background: checked ? "var(--brand-50)" : undefined,
-                    }}
-                  >
-                    <td style={{ textAlign: "center" }}>
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={() => toggleSelect(k.id)}
-                        onClick={(e) => e.stopPropagation()}
-                      />
-                    </td>
+                  <tr key={k.id}>
                     <td style={{ fontWeight: 600 }}>{k.label}</td>
                     <td>
                       {cat && (
@@ -369,7 +334,7 @@ export default function ResearchPage() {
               })}
               {visible.length === 0 && !loading && (
                 <tr>
-                  <td colSpan={7} style={{ padding: "40px 20px", textAlign: "center", color: "var(--text-muted)" }}>
+                  <td colSpan={6} style={{ padding: "40px 20px", textAlign: "center", color: "var(--text-muted)" }}>
                     조건에 맞는 키워드가 없어요
                   </td>
                 </tr>
@@ -378,6 +343,53 @@ export default function ResearchPage() {
           </table>
         </div>
       </div>
+    </div>
+  )
+}
+
+function SummaryTile({
+  label,
+  value,
+  sub,
+  accent,
+}: {
+  label: string
+  value: string
+  sub?: string
+  accent?: boolean
+}) {
+  return (
+    <div
+      style={{
+        background: accent ? "var(--brand-50)" : "var(--bg-surface)",
+        border: `1px solid ${accent ? "var(--brand-200)" : "var(--border-default)"}`,
+        borderRadius: "var(--r-lg)",
+        padding: "14px 16px",
+      }}
+    >
+      <div style={{ fontSize: 10.5, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".05em" }}>
+        {label}
+      </div>
+      <div
+        style={{
+          fontSize: 20,
+          fontWeight: 700,
+          marginTop: 4,
+          color: accent ? "var(--brand-700)" : "var(--text-primary)",
+          letterSpacing: "-.01em",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+        }}
+        title={value}
+      >
+        {value}
+      </div>
+      {sub && (
+        <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
+          {sub}
+        </div>
+      )}
     </div>
   )
 }
