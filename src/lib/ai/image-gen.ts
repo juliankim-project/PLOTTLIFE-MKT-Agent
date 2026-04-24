@@ -1,32 +1,29 @@
 /**
- * Gemini 이미지 생성 wrapper.
+ * Imagen 이미지 생성 wrapper — Vertex AI Express Mode.
  *
  * ⚠️ Server-only. 이미지 base64 를 반환 → 호출자가 Storage 에 업로드.
- * ⚠️ 무료 tier quota 초과 시 429. Google Cloud 결제 활성화하면 해제.
  *
- * 모델 후보 (fallback 체인):
- *   - gemini-2.5-flash-image       (stable)
- *   - gemini-2.5-flash-image-preview
- *   - gemini-2.0-flash-preview-image-generation
+ * 모델 후보 (fallback 체인, 품질 우선):
+ *   - imagen-3.0-fast-generate-001  (기본 · 저렴 ~$0.02/장)
+ *   - imagen-3.0-generate-002       (품질 좀 더)
+ *   - imagen-3.0-generate-001       (구 버전)
  */
 
 import "server-only"
-import { GoogleGenerativeAI } from "@google/generative-ai"
+import { GoogleGenAI } from "@google/genai"
+import { googleApiKey } from "./provider"
 
-// 2026-04 기준 실제 generateContent 호환 이미지 모델
-// listModels 로 확인한 활성 모델만 사용
 const IMAGE_MODEL_FALLBACKS = [
-  "gemini-2.5-flash-image",
-  "gemini-3.1-flash-image-preview",
-  "nano-banana-pro-preview",
+  "imagen-4.0-generate-001",
+  "imagen-4.0-fast-generate-001",
+  "imagen-3.0-generate-002",
+  "imagen-3.0-generate-001",
 ]
 
-let _client: GoogleGenerativeAI | null = null
+let _client: GoogleGenAI | null = null
 function client() {
   if (!_client) {
-    const key = process.env.GOOGLE_GENERATIVE_AI_API_KEY
-    if (!key) throw new Error("GOOGLE_GENERATIVE_AI_API_KEY not set")
-    _client = new GoogleGenerativeAI(key)
+    _client = new GoogleGenAI({ apiKey: googleApiKey() })
   }
   return _client
 }
@@ -41,10 +38,16 @@ export interface GeneratedImage {
   bytes: number
 }
 
-const RETRYABLE = /(429|overload|unavailable|quota|rate|exceed)/i
+const RETRYABLE = /(429|overload|unavailable|quota|rate|exceed|RESOURCE_EXHAUSTED)/i
 
 async function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms))
+}
+
+interface GenaiImageResponse {
+  generatedImages?: Array<{
+    image?: { imageBytes?: string; mimeType?: string }
+  }>
 }
 
 /**
@@ -56,26 +59,21 @@ export async function generateImage(prompt: string): Promise<GeneratedImage> {
   for (const modelName of IMAGE_MODEL_FALLBACKS) {
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
-        const model = client().getGenerativeModel({ model: modelName })
-        const result = await model.generateContent(prompt)
-        const parts = result.response?.candidates?.[0]?.content?.parts ?? []
-        for (const p of parts) {
-          const inline =
-            (p as { inlineData?: { mimeType?: string; data?: string } }).inlineData ??
-            ((p as { inline_data?: { mime_type?: string; data?: string } }).inline_data as
-              | { mime_type?: string; data?: string }
-              | undefined)
-          if (inline) {
-            const mimeType =
-              (inline as { mimeType?: string }).mimeType ??
-              (inline as { mime_type?: string }).mime_type ??
-              "image/png"
-            const base64 = (inline as { data?: string }).data ?? ""
-            if (base64) {
-              const bytes = Math.floor((base64.length * 3) / 4)
-              return { mimeType, base64, model: modelName, bytes }
-            }
-          }
+        const res = (await client().models.generateImages({
+          model: modelName,
+          prompt,
+          config: {
+            numberOfImages: 1,
+            aspectRatio: "16:9",
+          },
+        })) as GenaiImageResponse
+
+        const img = res.generatedImages?.[0]?.image
+        const base64 = img?.imageBytes ?? ""
+        const mimeType = img?.mimeType ?? "image/png"
+        if (base64) {
+          const bytes = Math.floor((base64.length * 3) / 4)
+          return { mimeType, base64, model: modelName, bytes }
         }
         modelErrors.push({ model: modelName, error: "image part missing in response" })
         break
@@ -95,9 +93,6 @@ export async function generateImage(prompt: string): Promise<GeneratedImage> {
     }
     console.warn(`[image-gen] ${modelName} exhausted`)
   }
-  // 통합 에러 메시지 — 각 모델별 이유 포함
-  const summary = modelErrors
-    .map((e) => `[${e.model}] ${e.error}`)
-    .join(" | ")
+  const summary = modelErrors.map((e) => `[${e.model}] ${e.error}`).join(" | ")
   throw new Error(`이미지 생성 실패 (모든 모델 소진): ${summary}`)
 }

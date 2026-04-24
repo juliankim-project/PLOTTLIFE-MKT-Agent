@@ -96,6 +96,7 @@ function IdeationPage() {
   /* ─── 생성 옵션 (프리셋으로만 조절) ───────────────────── */
   const [temperature, setTemperature] = useState(0.7)
   const [count, setCount] = useState(10)
+  const [quality, setQuality] = useState<"flash" | "pro">("flash")
 
   type GenPreset = "focused" | "balanced" | "explore"
   const PRESETS: Record<GenPreset, { count: number; temp: number; label: string; emoji: string; sub: string; desc: string }> = {
@@ -238,6 +239,7 @@ function IdeationPage() {
         searchMode: searchQuery.trim() ? searchMode : undefined,
         count,
         temperature,
+        quality,
       }
 
       const j = await safeFetchJson<{
@@ -569,6 +571,24 @@ function IdeationPage() {
           <div className="bcard plan-card">
             <div className="plan-card__head">
               <span className="plan-card__eyebrow">📋 이 조건으로 주제를 생성합니다</span>
+              <div className="plan-card__quality" role="group" aria-label="품질 모드">
+                <button
+                  type="button"
+                  className={`quality-btn${quality === "flash" ? " quality-btn--on" : ""}`}
+                  onClick={() => setQuality("flash")}
+                  title="Gemini 2.5 Flash — 빠르고 저렴 (기본)"
+                >
+                  💨 Flash
+                </button>
+                <button
+                  type="button"
+                  className={`quality-btn${quality === "pro" ? " quality-btn--on" : ""}`}
+                  onClick={() => setQuality("pro")}
+                  title="Gemini 2.5 Pro — 느리지만 최고 품질"
+                >
+                  🧠 Pro
+                </button>
+              </div>
               <span className="plan-card__count">{count}개 · {PRESETS[activePreset === "custom" ? "balanced" : activePreset].label}</span>
             </div>
 
@@ -1206,7 +1226,6 @@ function IdeationPage() {
           text-transform: uppercase;
         }
         .plan-card__count {
-          margin-left: auto;
           font-size: 10.5px;
           font-weight: 600;
           color: var(--text-secondary);
@@ -1214,6 +1233,29 @@ function IdeationPage() {
           border: 1px solid var(--brand-200);
           padding: 3px 9px;
           border-radius: 999px;
+        }
+        .plan-card__quality {
+          margin-left: auto;
+          display: inline-flex;
+          background: white;
+          border: 1px solid var(--brand-200);
+          border-radius: 999px;
+          padding: 2px;
+        }
+        .quality-btn {
+          font-size: 11px;
+          font-weight: 700;
+          padding: 3px 10px;
+          border: 0;
+          background: transparent;
+          border-radius: 999px;
+          cursor: pointer;
+          color: var(--text-secondary);
+        }
+        .quality-btn:hover:not(.quality-btn--on) { color: var(--brand-600); }
+        .quality-btn--on {
+          background: var(--brand-600);
+          color: white;
         }
 
         /* 3열 그리드 */
