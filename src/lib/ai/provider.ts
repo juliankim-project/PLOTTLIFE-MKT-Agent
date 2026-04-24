@@ -150,12 +150,18 @@ async function callOpenAI(opts: CompletionOptions): Promise<CompletionResult> {
 // ── Google Gemini (with retry + model fallback) ───────────────
 // Vercel Hobby 서버리스 함수는 최대 60초 → 총 실행 40초 이내로 제한.
 // 같은 모델 2회 재시도 + 최대 1단계 fallback.
+// Free tier RPD (일일 요청 한도) 우선 — lite/2.0 위주로 구성.
+// gemini-flash-latest / pro-latest 는 최신(gemini-3-flash) 로 resolve 되며
+// RPD=20 으로 빠르게 소진되므로 fallback 에서 제외.
 const GEMINI_FALLBACKS: Record<string, string[]> = {
-  "gemini-2.5-pro": ["gemini-2.5-flash"],
-  "gemini-2.5-flash": ["gemini-flash-latest"],
-  "gemini-flash-latest": ["gemini-2.0-flash"],
-  "gemini-pro-latest": ["gemini-flash-latest"],
-  "gemini-2.0-flash": ["gemini-2.0-flash-lite"],
+  "gemini-2.5-pro":          ["gemini-2.5-flash", "gemini-2.5-flash-lite"],
+  "gemini-2.5-flash":        ["gemini-2.5-flash-lite", "gemini-2.0-flash"],
+  "gemini-2.5-flash-lite":   ["gemini-2.0-flash-lite", "gemini-2.0-flash"],
+  "gemini-2.0-flash":        ["gemini-2.0-flash-lite", "gemini-2.5-flash-lite"],
+  "gemini-2.0-flash-lite":   ["gemini-2.5-flash-lite"],
+  // 아래는 fallback 시 사용 안 함 — 직접 지정했을 때만
+  "gemini-flash-latest":     ["gemini-2.5-flash"],
+  "gemini-pro-latest":       ["gemini-2.5-pro", "gemini-2.5-flash"],
 }
 
 const RETRYABLE_GEMINI = /(503|429|overload|unavailable|exceed|rate)/i
