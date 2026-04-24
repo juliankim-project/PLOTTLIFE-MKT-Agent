@@ -190,6 +190,12 @@ async function callGeminiOnce(modelName: string, opts: CompletionOptions): Promi
     parts: [{ text: m.content }],
   }))
 
+  /* Gemini 2.5 는 thinking tokens 를 소모 → JSON 모드에서 visible 응답이 잘림 방지
+     JSON 응답을 요구할 땐 thinking budget 을 0 으로 (Flash/Pro 공통) */
+  const thinkingConfig = opts.json && modelName.startsWith("gemini-2.5")
+    ? { thinkingBudget: 0 }
+    : undefined
+
   const res = (await ai.models.generateContent({
     model: modelName,
     contents,
@@ -198,6 +204,7 @@ async function callGeminiOnce(modelName: string, opts: CompletionOptions): Promi
       temperature: opts.temperature,
       maxOutputTokens: opts.max_tokens,
       responseMimeType: opts.json ? "application/json" : undefined,
+      ...(thinkingConfig ? { thinkingConfig } : {}),
     },
   })) as GenaiTextResponse
 

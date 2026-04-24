@@ -145,7 +145,7 @@ ${draft.body_markdown}
     projectId: input.projectId,
     prompt,
     temperature: 0.2,
-    maxTokens: 8000,
+    maxTokens: 16000,
     json: true,
     modelOverride: input.quality === "pro" ? "gemini-2.5-pro" : "gemini-2.5-flash",
   })
@@ -157,7 +157,12 @@ ${draft.body_markdown}
     !Array.isArray(parsed.categories) ||
     parsed.categories.length === 0
   ) {
-    throw new Error("검수 응답이 JSON 스키마에 맞지 않아요 — 다시 실행해주세요")
+    /* 잘림 등 파싱 실패 시 raw 응답 일부를 에러에 포함 → 디버깅 */
+    const rawHead = (result.text ?? "").slice(0, 120).replace(/\s+/g, " ").trim()
+    const rawTail = (result.text ?? "").slice(-120).replace(/\s+/g, " ").trim()
+    throw new Error(
+      `검수 응답이 JSON 스키마에 맞지 않아요 — 다시 실행하거나 Pro 모드로 시도해 보세요.\n(응답 앞: "${rawHead}…" / 응답 끝: "…${rawTail}")`
+    )
   }
 
   /* categories 를 items flat 배열(기존 DB schema)로 직렬화 */
