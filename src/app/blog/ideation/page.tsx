@@ -91,6 +91,7 @@ function IdeationPage() {
   /* ─── 검색 ─────────────────────────────────────────────── */
   const [searchMode, setSearchMode] = useState<"sentence" | "keyword">("sentence")
   const [searchQuery, setSearchQuery] = useState("")
+  const [searchOpen, setSearchOpen] = useState(false)
 
   /* ─── 생성 옵션 ─────────────────────────────────────────── */
   const [temperature, setTemperature] = useState(0.7)
@@ -527,7 +528,7 @@ function IdeationPage() {
             </div>
           </div>
 
-          {/* Generate 버튼 + 프리셋 */}
+          {/* 생성 모드 프리셋만 — 실제 생성 CTA는 오른쪽 Plan 카드로 이동 */}
           <div className="compass-generate">
             <div className="preset-label">
               생성 모드
@@ -557,24 +558,110 @@ function IdeationPage() {
                 )
               })}
             </div>
+            <div className="gen-sub" style={{ marginTop: 10 }}>
+              생성 버튼은 오른쪽 → <b style={{ color: "var(--brand-600)" }}>Plan</b> 카드
+            </div>
+          </div>
+        </aside>
+
+        {/* ═══════════════════════════════════════════════════════
+           RIGHT: Plan 카드 (요약 + 메인 CTA + 검색·고급 서브) + 매트릭스
+           ═══════════════════════════════════════════════════════ */}
+        <div className="right-col">
+          {/* ── Plan 카드 ── */}
+          <div className="bcard plan-card">
+            <div className="plan-card__head">
+              <span className="plan-card__eyebrow">📋 이 조건으로 주제를 생성합니다</span>
+              <span className="plan-card__count">{count}개 · {PRESETS[activePreset === "custom" ? "balanced" : activePreset].label}</span>
+            </div>
+
+            {/* 축별 요약 rows */}
+            <div className="plan-rows">
+              <PlanRow icon="👥" label="세그먼트" empty={selectedSegments.size === 0}>
+                {selectedSegments.size === 0
+                  ? "전체 페르소나 밸런스"
+                  : Array.from(selectedSegments).map((id) => (
+                      <span key={id} className="plan-chip plan-chip--seg">
+                        {PERSONAS.find((p) => p.id === id)?.label ?? id}
+                      </span>
+                    ))}
+              </PlanRow>
+
+              <PlanRow icon="📋" label="여정 단계" empty={selectedStages.size === 0}>
+                {selectedStages.size === 0
+                  ? "8단계 고르게"
+                  : Array.from(selectedStages).map((s) => (
+                      <span key={s} className="plan-chip">
+                        {STAGE_DEFS[s].ko}
+                      </span>
+                    ))}
+              </PlanRow>
+
+              {(selectedSeasons.size > 0 || selectedTriggers.size > 0 || selectedPains.size > 0) && (
+                <PlanRow icon="🌗" label="상황·레버" empty={false}>
+                  {Array.from(selectedSeasons).map((id) => (
+                    <span key={"s-" + id} className="plan-chip plan-chip--ctx">
+                      {SEASONS.find((s) => s.id === id)?.ko ?? id}
+                    </span>
+                  ))}
+                  {Array.from(selectedTriggers).map((id) => (
+                    <span key={"t-" + id} className="plan-chip plan-chip--ctx">
+                      {LIFE_TRIGGERS.find((t) => t.id === id)?.ko ?? id}
+                    </span>
+                  ))}
+                  {Array.from(selectedPains).map((id) => {
+                    const p = PAIN_TAGS.find((x) => x.id === id)
+                    return (
+                      <span key={"p-" + id} className="plan-chip plan-chip--pain">
+                        {p?.ko ?? id}
+                        {p?.isServiceLever && <span style={{ opacity: 0.7 }}> ⭐</span>}
+                      </span>
+                    )
+                  })}
+                </PlanRow>
+              )}
+
+              <PlanRow icon="🎯" label="목적" empty={selectedIntents.size === 0}>
+                {selectedIntents.size === 0
+                  ? "5개 의도 고르게"
+                  : Array.from(selectedIntents).map((i) => (
+                      <span key={i} className="plan-chip plan-chip--intent" style={{ borderColor: INTENT_DEFS[i].color }}>
+                        <span className="plan-dot" style={{ background: INTENT_DEFS[i].color }} />
+                        {INTENT_DEFS[i].emoji} {INTENT_DEFS[i].ko}
+                      </span>
+                    ))}
+              </PlanRow>
+
+              {searchQuery.trim() && (
+                <PlanRow icon="🔍" label="탐색어" empty={false}>
+                  <span className="plan-chip plan-chip--search">
+                    "{searchQuery.length > 48 ? searchQuery.slice(0, 48) + "…" : searchQuery}"
+                    <span className="x" onClick={() => setSearchQuery("")}>✕</span>
+                  </span>
+                </PlanRow>
+              )}
+            </div>
+
+            {/* 메인 CTA */}
             <button
-              className="bbtn bbtn--primary bbtn--lg"
-              style={{ width: "100%", justifyContent: "center", marginTop: 10 }}
+              className="bbtn bbtn--primary plan-card__cta"
               onClick={handleGenerate}
               disabled={phase !== "idle" && phase !== "done"}
             >
               {phase === "idle" || phase === "done" ? (
                 <>
-                  <Icon name="sparkles" size={15} />
-                  {count}개 주제 생성
+                  <Icon name="sparkles" size={16} />
+                  <span>이 조건으로 <b>{count}개 주제</b> 생성</span>
+                  <span className="plan-card__cta-arrow">→</span>
                 </>
               ) : (
                 <>
                   <Spinner />
-                  <span style={{ marginLeft: 4 }}>{phaseLabel[phase]}</span>
+                  <span style={{ marginLeft: 6 }}>{phaseLabel[phase]}</span>
                 </>
               )}
             </button>
+
             {phase !== "idle" && phase !== "done" && (
               <div style={{ marginTop: 8 }}>
                 <div className="bar-track" style={{ height: 4 }}>
@@ -582,194 +669,152 @@ function IdeationPage() {
                 </div>
               </div>
             )}
+
             {phase === "done" && lastRunMeta && (
               <div className="gen-done">
                 ✓ {lastRunMeta.count}개 생성 · {lastRunMeta.model} · {(lastRunMeta.durationMs / 1000).toFixed(1)}s
               </div>
             )}
-            <div className="gen-sub">Gemini 2.5 Flash · ~30초</div>
-          </div>
-        </aside>
 
-        {/* ═══════════════════════════════════════════════════════
-           RIGHT: 검색 히어로 + 요약 스트립 + 매트릭스
-           ═══════════════════════════════════════════════════════ */}
-        <div className="right-col">
-          {/* 검색 히어로 */}
-          <div className="bcard">
-            <div className="search-hero">
-              <div className="search-hero__head">
-                <span className="search-hero__label">🔍 주제 탐색</span>
-                <span className="search-hero__sub">
-                  키워드 또는 문장으로 바로 생성 · 왼쪽 3축은 보조 필터로 동작
-                </span>
-                <div className="search-hero__mode">
-                  <button
-                    className={searchMode === "sentence" ? "on" : ""}
-                    onClick={() => setSearchMode("sentence")}
-                  >
-                    문장
-                  </button>
-                  <button
-                    className={searchMode === "keyword" ? "on" : ""}
-                    onClick={() => setSearchMode("keyword")}
-                  >
-                    키워드
-                  </button>
-                </div>
-              </div>
+            {/* ── 서브: 탐색어 추가 (접힘) ── */}
+            <div className="plan-extras">
+              <button
+                type="button"
+                className="plan-extras__toggle"
+                onClick={() => setSearchOpen((v) => !v)}
+              >
+                <span>🔍 특정 키워드·문장으로 좁히기 <span className="plan-extras__opt">(선택)</span></span>
+                <span className="plan-extras__chev">{searchOpen ? "▴" : "▾"}</span>
+              </button>
+              {searchOpen && (
+                <div className="plan-extras__body">
+                  <div className="search-inline__head">
+                    <span className="search-inline__sub">
+                      {searchMode === "sentence"
+                        ? "문장은 3축을 자동 추론 (포커스 벗어날 때 반영)"
+                        : "키워드는 정확 매칭 기반 확장"}
+                    </span>
+                    <div className="search-inline__mode">
+                      <button
+                        className={searchMode === "sentence" ? "on" : ""}
+                        onClick={() => setSearchMode("sentence")}
+                      >문장</button>
+                      <button
+                        className={searchMode === "keyword" ? "on" : ""}
+                        onClick={() => setSearchMode("keyword")}
+                      >키워드</button>
+                    </div>
+                  </div>
 
-              <div className="search-hero__row">
-                <input
-                  className="search-hero__input"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  onBlur={() => {
-                    if (searchMode === "sentence" && searchQuery.trim()) {
-                      applyHintsFromQuery(searchQuery)
-                    }
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
+                  <input
+                    className="search-inline__input"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onBlur={() => {
                       if (searchMode === "sentence" && searchQuery.trim()) {
                         applyHintsFromQuery(searchQuery)
                       }
-                      handleGenerate()
-                    }
-                  }}
-                  placeholder={
-                    searchMode === "sentence"
-                      ? "예) 3월 입학 외국인 유학생이 보증금 없이 첫 달 숙소 구하는 법"
-                      : "예) 보증금 0원 단기임대 ARC"
-                  }
-                />
-                <button className="search-hero__submit" onClick={handleGenerate} disabled={phase !== "idle" && phase !== "done"}>
-                  ✨ 생성 →
-                </button>
-              </div>
-
-              <div className="search-hero__hints">
-                <span className="search-hero__hints-label">예시:</span>
-                {(searchMode === "sentence"
-                  ? [
-                      "보증금 없이 단기임대 예약 가능한가",
-                      "한달살기 가족 동반 성수동",
-                      "재계약 할지 귀국할지 결정",
-                    ]
-                  : [
-                      "ARC 발급 + 단기임대",
-                      "no deposit Seoul short-term",
-                      "보증금 0원 월세 시세",
-                    ]
-                ).map((h) => (
-                  <span
-                    key={h}
-                    className="search-hero__hint"
-                    onClick={() => {
-                      setSearchQuery(h)
-                      if (searchMode === "sentence") applyHintsFromQuery(h)
                     }}
-                  >
-                    {h}
-                  </span>
-                ))}
-              </div>
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        if (searchMode === "sentence" && searchQuery.trim()) {
+                          applyHintsFromQuery(searchQuery)
+                        }
+                        handleGenerate()
+                      }
+                    }}
+                    placeholder={
+                      searchMode === "sentence"
+                        ? "예) 3월 입학 외국인 유학생이 보증금 없이 첫 달 숙소 구하는 법"
+                        : "예) 보증금 0원 단기임대 ARC"
+                    }
+                  />
 
-              <div className="search-hero__meta">
-                {searchMode === "sentence"
-                  ? "💡 문장은 의도를 파싱해 3축을 자동 추론합니다 (포커스 벗어날 때 반영)"
-                  : "🎯 키워드는 정확 매칭 기반 확장"}
-              </div>
-            </div>
-          </div>
-
-          {/* 요약 스트립 */}
-          <div className="bcard">
-            <div className="summary-strip">
-              <div>
-                <div className="summary-strip__label">현재 설정 요약</div>
-                <div className="summary-strip__facets">
-                  {searchQuery.trim() && (
-                    <span className="active-search">
-                      🔍 "{searchQuery.length > 28 ? searchQuery.slice(0, 28) + "…" : searchQuery}"
-                      <span className="x" onClick={() => setSearchQuery("")}>✕</span>
-                    </span>
-                  )}
-                  {Array.from(selectedIntents).map((i) => (
-                    <span key={i} className="bchip bchip--brand">
-                      {INTENT_DEFS[i].emoji} {INTENT_DEFS[i].ko}
-                    </span>
-                  ))}
-                  {selectedSegments.size > 0 && (
-                    <span className="bchip">
-                      {Array.from(selectedSegments)
-                        .map((id) => PERSONAS.find((p) => p.id === id)?.label ?? id)
-                        .join(" + ")}
-                    </span>
-                  )}
-                  {selectedStages.size > 0 && (
-                    <span className="bchip">
-                      {Array.from(selectedStages).map((s) => STAGE_DEFS[s].ko).join(" · ")}
-                    </span>
-                  )}
-                  {selectedSeasons.size > 0 && (
-                    <span className="bchip">
-                      {Array.from(selectedSeasons)
-                        .map((id) => SEASONS.find((s) => s.id === id)?.ko ?? id)
-                        .join(" · ")}
-                    </span>
-                  )}
-                  {selectedPains.size > 0 && (
-                    <span className="bchip">
-                      {Array.from(selectedPains)
-                        .map((id) => PAIN_TAGS.find((p) => p.id === id)?.ko ?? id)
-                        .join(" · ")}
-                    </span>
-                  )}
-                </div>
-              </div>
-              <button className="advanced-toggle" onClick={() => setAdvancedOpen((v) => !v)}>
-                고급: 프롬프트 직접 편집 {advancedOpen ? "▴" : "▾"}
-              </button>
-            </div>
-            {advancedOpen && (
-              <div className="prompt-panel">
-                <label>추가 지시문 (3축 위에 덧붙여집니다)</label>
-                <textarea
-                  value={extraPrompt}
-                  onChange={(e) => setExtraPrompt(e.target.value)}
-                  placeholder="예: '체크리스트 포맷 선호', '경쟁사가 놓친 각도 집중' 등"
-                />
-                <div className="prompt-panel__row">
-                  <div>
-                    <label>창의성 (Temperature)</label>
-                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                      <input
-                        type="range"
-                        min="0"
-                        max="1"
-                        step="0.1"
-                        value={temperature}
-                        onChange={(e) => setTemperature(parseFloat(e.target.value))}
-                        style={{ flex: 1 }}
-                      />
-                      <span className="text-mono" style={{ fontSize: 12, fontWeight: 600, minWidth: 28 }}>
-                        {temperature.toFixed(1)}
+                  <div className="search-inline__hints">
+                    <span className="search-inline__hints-label">예시:</span>
+                    {(searchMode === "sentence"
+                      ? [
+                          "보증금 없이 단기임대 예약 가능한가",
+                          "한달살기 가족 동반 성수동",
+                          "재계약 할지 귀국할지 결정",
+                        ]
+                      : [
+                          "ARC 발급 + 단기임대",
+                          "no deposit Seoul short-term",
+                          "보증금 0원 월세 시세",
+                        ]
+                    ).map((h) => (
+                      <span
+                        key={h}
+                        className="search-inline__hint"
+                        onClick={() => {
+                          setSearchQuery(h)
+                          if (searchMode === "sentence") applyHintsFromQuery(h)
+                        }}
+                      >
+                        {h}
                       </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* ── 서브: 고급 (접힘) ── */}
+            <div className="plan-extras plan-extras--last">
+              <button
+                type="button"
+                className="plan-extras__toggle"
+                onClick={() => setAdvancedOpen((v) => !v)}
+              >
+                <span>⚙️ 고급 — 프롬프트·Temperature·개수 <span className="plan-extras__opt">(선택)</span></span>
+                <span className="plan-extras__chev">{advancedOpen ? "▴" : "▾"}</span>
+              </button>
+              {advancedOpen && (
+                <div className="plan-extras__body">
+                  <label className="plan-extras__label">추가 지시문 (3축 위에 덧붙여집니다)</label>
+                  <textarea
+                    className="plan-extras__ta"
+                    value={extraPrompt}
+                    onChange={(e) => setExtraPrompt(e.target.value)}
+                    placeholder="예: '체크리스트 포맷 선호', '경쟁사가 놓친 각도 집중' 등"
+                  />
+                  <div className="plan-extras__row">
+                    <div>
+                      <label className="plan-extras__label">창의성 (Temperature)</label>
+                      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                        <input
+                          type="range"
+                          min="0"
+                          max="1"
+                          step="0.1"
+                          value={temperature}
+                          onChange={(e) => setTemperature(parseFloat(e.target.value))}
+                          style={{ flex: 1 }}
+                        />
+                        <span className="text-mono" style={{ fontSize: 12, fontWeight: 600, minWidth: 28 }}>
+                          {temperature.toFixed(1)}
+                        </span>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="plan-extras__label">생성 개수</label>
+                      <select
+                        className="plan-extras__select"
+                        value={count}
+                        onChange={(e) => setCount(parseInt(e.target.value, 10))}
+                      >
+                        <option value={5}>5개 (추천만)</option>
+                        <option value={10}>10개 (15~25초)</option>
+                        <option value={20}>20개 (20~35초)</option>
+                        <option value={30}>30개 (25~45초)</option>
+                        <option value={50}>50개 (~60초)</option>
+                      </select>
                     </div>
                   </div>
-                  <div>
-                    <label>생성 개수</label>
-                    <select value={count} onChange={(e) => setCount(parseInt(e.target.value, 10))}>
-                      <option value={10}>10개 (15~25초)</option>
-                      <option value={20}>20개 (20~35초)</option>
-                      <option value={30}>30개 (25~45초)</option>
-                      <option value={50}>50개 (~60초)</option>
-                    </select>
-                  </div>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
 
           {/* 매트릭스 */}
@@ -1157,36 +1202,188 @@ function IdeationPage() {
         /* ── 오른쪽 칼럼 ──────────────────────────── */
         .right-col { display: flex; flex-direction: column; gap: 14px; }
 
-        /* 검색 히어로 */
-        .search-hero {
-          padding: 16px 18px 18px;
-          background: linear-gradient(135deg, var(--brand-50) 0%, #f6f0ff 60%, #fff5f8 100%);
+        /* ── Plan 카드 ─────────────────────────────── */
+        .plan-card {
+          padding: 18px 20px 20px;
+          background: linear-gradient(180deg, var(--brand-50) 0%, var(--bg-surface) 60%);
+          border-color: var(--brand-200);
         }
-        .search-hero__head {
+        .plan-card__head {
           display: flex;
           align-items: center;
           gap: 8px;
-          margin-bottom: 10px;
-          flex-wrap: wrap;
+          margin-bottom: 14px;
         }
-        .search-hero__label {
+        .plan-card__eyebrow {
           font-size: 11px;
           font-weight: 700;
           color: var(--brand-700);
-          letter-spacing: 0.08em;
+          letter-spacing: 0.05em;
           text-transform: uppercase;
         }
-        .search-hero__sub { font-size: 10.5px; color: var(--text-secondary); font-weight: 500; }
-        .search-hero__mode {
-          display: inline-flex;
-          gap: 0;
+        .plan-card__count {
+          margin-left: auto;
+          font-size: 10.5px;
+          font-weight: 600;
+          color: var(--text-secondary);
           background: white;
           border: 1px solid var(--brand-200);
+          padding: 3px 9px;
+          border-radius: 999px;
+        }
+
+        /* rows */
+        .plan-rows {
+          display: flex;
+          flex-direction: column;
+          gap: 3px;
+          margin-bottom: 14px;
+          background: white;
+          border: 1px solid var(--border-default);
+          border-radius: var(--r-md);
+          overflow: hidden;
+        }
+        .plan-row {
+          display: grid;
+          grid-template-columns: 100px 1fr;
+          gap: 10px;
+          align-items: center;
+          padding: 10px 12px;
+          border-bottom: 1px solid var(--border-subtle);
+        }
+        .plan-row:last-child { border-bottom: 0; }
+        .plan-row__label {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          font-size: 11px;
+          color: var(--text-muted);
+          font-weight: 600;
+        }
+        .plan-row__icon { font-size: 14px; line-height: 1; }
+        .plan-row__name { letter-spacing: 0.02em; }
+        .plan-row__values { display: flex; flex-wrap: wrap; gap: 4px; font-size: 12px; color: var(--text-primary); }
+        .plan-row__values--empty { color: var(--text-muted); font-style: italic; font-size: 11.5px; }
+
+        .plan-chip {
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          padding: 2px 8px;
+          border-radius: 999px;
+          font-size: 11.5px;
+          font-weight: 600;
+          background: var(--bg-subtle);
+          color: var(--text-primary);
+          border: 1px solid var(--border-default);
+        }
+        .plan-chip--seg { background: #eef2ff; border-color: #c7d2fe; color: #3730a3; }
+        .plan-chip--ctx { background: #fffbeb; border-color: #fde68a; color: #92400e; }
+        .plan-chip--pain { background: #fef2f2; border-color: #fecaca; color: #991b1b; }
+        .plan-chip--intent { background: white; border-width: 1.5px; color: var(--text-primary); }
+        .plan-chip--search {
+          background: #fff3f6;
+          border-color: #ffc9d6;
+          color: #9f1239;
+          font-weight: 600;
+        }
+        .plan-chip--search .x { cursor: pointer; opacity: 0.7; margin-left: 4px; }
+        .plan-dot { width: 8px; height: 8px; border-radius: 999px; }
+
+        /* 메인 CTA */
+        .plan-card__cta {
+          width: 100%;
+          padding: 14px 16px;
+          font-size: 14px;
+          font-weight: 700;
+          border-radius: 10px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          background: var(--brand-600);
+          color: white;
+          border: 0;
+          cursor: pointer;
+          transition: background 0.12s, transform 0.12s;
+        }
+        .plan-card__cta:hover:not(:disabled) { background: var(--brand-700); }
+        .plan-card__cta:active:not(:disabled) { transform: scale(0.99); }
+        .plan-card__cta:disabled { opacity: 0.6; cursor: not-allowed; }
+        .plan-card__cta-arrow { font-size: 14px; margin-left: 4px; }
+        .plan-card__cta b { font-size: 15px; margin: 0 3px; }
+
+        .gen-done {
+          margin-top: 10px;
+          padding: 6px 10px;
+          background: var(--success-bg);
+          border: 1px solid var(--success-border);
+          border-radius: var(--r-md);
+          font-size: 11.5px;
+          color: var(--success-fg);
+          display: flex;
+          align-items: center;
+          gap: 6px;
+        }
+
+        /* extras — 접힘 섹션 */
+        .plan-extras {
+          margin-top: 12px;
+          border-top: 1px solid var(--brand-200);
+          padding-top: 10px;
+        }
+        .plan-extras--last { border-top: 0; padding-top: 0; margin-top: 4px; }
+        .plan-extras__toggle {
+          width: 100%;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 8px 4px;
+          background: none;
+          border: 0;
+          cursor: pointer;
+          font-size: 12px;
+          font-weight: 600;
+          color: var(--brand-700);
+        }
+        .plan-extras__toggle:hover { color: var(--brand-800); }
+        .plan-extras__opt {
+          font-size: 10.5px;
+          color: var(--text-muted);
+          font-weight: 500;
+          margin-left: 2px;
+        }
+        .plan-extras__chev { font-size: 10px; color: var(--text-muted); }
+        .plan-extras__body {
+          padding: 8px 2px 6px;
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+        .plan-extras__label {
+          font-size: 11px;
+          color: var(--text-muted);
+          font-weight: 600;
+          display: block;
+          margin-bottom: 4px;
+        }
+
+        /* inline search */
+        .search-inline__head {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          flex-wrap: wrap;
+        }
+        .search-inline__sub { font-size: 11px; color: var(--text-secondary); flex: 1; }
+        .search-inline__mode {
+          display: inline-flex;
+          background: white;
+          border: 1px solid var(--border-default);
           border-radius: 999px;
           padding: 2px;
-          margin-left: auto;
         }
-        .search-hero__mode button {
+        .search-inline__mode button {
           font-size: 10.5px;
           font-weight: 600;
           padding: 4px 10px;
@@ -1196,116 +1393,42 @@ function IdeationPage() {
           cursor: pointer;
           color: var(--text-secondary);
         }
-        .search-hero__mode button.on { background: var(--brand-600); color: white; }
-
-        .search-hero__row {
-          display: flex;
-          gap: 8px;
-          align-items: stretch;
-        }
-        .search-hero__input {
-          flex: 1;
-          padding: 12px 14px;
-          font-size: 14px;
-          border-radius: 10px;
-          border: 1px solid var(--brand-200);
+        .search-inline__mode button.on { background: var(--brand-600); color: white; }
+        .search-inline__input {
+          width: 100%;
+          padding: 10px 12px;
+          font-size: 13.5px;
+          border-radius: 8px;
+          border: 1px solid var(--border-default);
           background: white;
           font-family: inherit;
           color: var(--text-primary);
         }
-        .search-hero__input:focus {
+        .search-inline__input:focus {
           outline: none;
           border-color: var(--brand-500);
           box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
         }
-        .search-hero__submit {
-          padding: 0 18px;
-          border-radius: 10px;
-          border: 0;
-          background: var(--brand-600);
-          color: white;
-          font-weight: 700;
-          font-size: 13px;
-          cursor: pointer;
-          white-space: nowrap;
-        }
-        .search-hero__submit:hover:not(:disabled) { background: var(--brand-700); }
-        .search-hero__submit:disabled { opacity: 0.5; cursor: not-allowed; }
-
-        .search-hero__hints { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
-        .search-hero__hints-label {
-          font-size: 11px;
-          color: var(--text-secondary);
+        .search-inline__hints { display: flex; flex-wrap: wrap; gap: 5px; }
+        .search-inline__hints-label {
+          font-size: 10.5px;
+          color: var(--text-muted);
           font-weight: 600;
           align-self: center;
-          margin-right: 4px;
+          margin-right: 2px;
         }
-        .search-hero__hint {
-          font-size: 11px;
-          padding: 3px 9px;
+        .search-inline__hint {
+          font-size: 10.5px;
+          padding: 3px 8px;
           border-radius: 999px;
-          background: white;
-          border: 1px solid var(--brand-200);
-          color: var(--brand-700);
-          cursor: pointer;
-        }
-        .search-hero__hint:hover { background: var(--brand-50); }
-        .search-hero__meta {
-          font-size: 11px;
-          color: var(--text-secondary);
-          margin-top: 8px;
-        }
-
-        /* 요약 스트립 */
-        .summary-strip {
-          display: grid;
-          grid-template-columns: 1fr auto;
-          gap: 14px;
-          align-items: center;
-          padding: 12px 16px;
-        }
-        .summary-strip__label {
-          font-size: 11px;
-          color: var(--text-muted);
-          font-weight: 600;
-          margin-bottom: 6px;
-        }
-        .summary-strip__facets { display: flex; flex-wrap: wrap; gap: 6px; }
-        .advanced-toggle {
-          font-size: 11.5px;
-          color: var(--brand-600);
-          cursor: pointer;
-          background: none;
-          border: 0;
-          font-weight: 600;
-        }
-        .active-search {
-          display: inline-flex;
-          align-items: center;
-          gap: 6px;
-          background: #fff3f6;
-          border: 1px solid #ffc9d6;
-          color: #9f1239;
-          padding: 3px 10px;
-          border-radius: 999px;
-          font-size: 11px;
-          font-weight: 600;
-        }
-        .active-search .x { cursor: pointer; opacity: 0.7; }
-
-        .prompt-panel {
-          padding: 14px 16px;
-          border-top: 1px solid var(--border-subtle);
           background: var(--bg-subtle);
+          border: 1px solid var(--border-default);
+          color: var(--text-secondary);
+          cursor: pointer;
         }
-        .prompt-panel label {
-          font-size: 11px;
-          color: var(--text-muted);
-          font-weight: 600;
-          display: block;
-          margin-bottom: 4px;
-        }
-        .prompt-panel textarea {
+        .search-inline__hint:hover { background: var(--brand-50); border-color: var(--brand-200); color: var(--brand-700); }
+
+        .plan-extras__ta {
           width: 100%;
           min-height: 60px;
           padding: 8px 10px;
@@ -1316,13 +1439,13 @@ function IdeationPage() {
           font-size: 12.5px;
           background: white;
         }
-        .prompt-panel__row {
+        .plan-extras__row {
           display: grid;
           grid-template-columns: 1fr 1fr;
           gap: 14px;
-          margin-top: 10px;
+          margin-top: 4px;
         }
-        .prompt-panel__row select {
+        .plan-extras__select {
           width: 100%;
           padding: 5px 8px;
           border: 1px solid var(--border-default);
@@ -1532,5 +1655,29 @@ function Spinner({ size = 14 }: { size?: number }) {
       className="ideation-spinner"
       style={{ width: size, height: size }}
     />
+  )
+}
+
+function PlanRow({
+  icon,
+  label,
+  empty,
+  children,
+}: {
+  icon: string
+  label: string
+  empty: boolean
+  children: React.ReactNode
+}) {
+  return (
+    <div className="plan-row">
+      <div className="plan-row__label">
+        <span className="plan-row__icon">{icon}</span>
+        <span className="plan-row__name">{label}</span>
+      </div>
+      <div className={`plan-row__values${empty ? " plan-row__values--empty" : ""}`}>
+        {children}
+      </div>
+    </div>
   )
 }
