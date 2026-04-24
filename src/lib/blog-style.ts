@@ -89,6 +89,144 @@ export const PLOTT_BLOG_STYLE = {
   ],
 }
 
+/**
+ * 게스트 여정 7단계별 독자 시점(POV) 가이드.
+ * 도입부·어투가 "독자가 지금 어디에 있는지"와 일치해야 한다.
+ */
+export const JOURNEY_STAGE_POV: Record<
+  "consider" | "prepare" | "arrive" | "settle" | "live" | "explore" | "change",
+  {
+    label: string
+    readerState: string
+    hookExamples: string[]
+    banPhrases: string[]
+  }
+> = {
+  consider: {
+    label: "🤔 Consider · 아직 한국에 오기 전, 유학/체류 자체를 고민 중",
+    readerState: "독자는 한국에 아직 오지 않았다. 유학·파견·한달살기 '할까 말까' 리서치 단계. 비자도 없고 날짜도 미정.",
+    hookExamples: [
+      "한국 유학, 막상 가볼까 생각하면 뭐부터 알아봐야 할지 막막하죠?",
+      "유학 갈지 말지 결정 전에 꼭 알아둘 게 있어요.",
+      "한국행 계획 세우기 전에 예산부터 맞춰보는 게 현명해요.",
+    ],
+    banPhrases: [
+      "즐겁게 보내고 계신가요?",           // 이미 와 있는 톤
+      "한국 생활에 익숙해질 때쯤",
+      "한국 도착 후",
+      "비자 만료일이 다가오면",
+    ],
+  },
+  prepare: {
+    label: "📋 Prepare · 오기로 결정, 비자/서류/짐/첫 숙소 준비 중",
+    readerState: "독자는 한국행을 결정했고 출국 전 준비 단계. 입국까지 1~3개월. 비자 신청·합격 통지·짐 패킹·첫 숙소 예약 고민.",
+    hookExamples: [
+      "출국 날짜는 다가오는데 비자 서류만 봐도 한숨 나오죠?",
+      "한국 입국까지 한 달 남았는데 뭘 먼저 준비해야 할까요?",
+      "첫 숙소 예약, 도착 전에 어떻게 정하지?",
+    ],
+    banPhrases: [
+      "즐겁게 보내고 계신가요?",
+      "도착하자마자 막막했던",
+      "한국에 살다 보면",
+    ],
+  },
+  arrive: {
+    label: "✈️ Arrive · 막 도착, 첫 며칠~1주",
+    readerState: "독자는 방금 한국에 도착했거나 도착 직전. 공항→숙소·첫 끼·체크인·첫 며칠 생존이 최우선.",
+    hookExamples: [
+      "한국 도착하자마자 뭘 해야 하는지 머리가 하얘지지 않으세요?",
+      "인천공항에서 숙소까지, 처음엔 막막하죠?",
+      "첫 주는 정말 정신없이 지나가요.",
+    ],
+    banPhrases: [
+      "비자 만료일이 다가오면",
+      "한국 생활 한 달쯤 되니",
+      "ARC 이미 받으셨다면",
+    ],
+  },
+  settle: {
+    label: "🏡 Settle · 서류·계정 세팅 (ARC·은행·통신·교통카드)",
+    readerState: "독자는 한국에 도착한 지 1~6주. ARC·은행·통신 개통 중. 서류 받으러 다니는 단계.",
+    hookExamples: [
+      "ARC 발급 예약했는데 서류가 뭐가 필요한지 헷갈리죠?",
+      "외국인 등록증 받기 전엔 계좌 개설도 안 된다는 거, 알고 계셨나요?",
+      "통신사 어디가 외국인에게 유리할까요?",
+    ],
+    banPhrases: [
+      "한국에 오기 전엔",
+      "출국 준비 중이시면",
+      "한국 생활 1년이 지나면",
+    ],
+  },
+  live: {
+    label: "🌱 Live · 일상 적응 (집안일·먹거리·병원·문화)",
+    readerState: "독자는 체류 기본 셋업 완료. 매일의 생활이 시작됨. 세탁기·배달앱·마트·병원 등 일상 실용 니즈.",
+    hookExamples: [
+      "한국 생활 한 달쯤 되니 세탁기 버튼이 여전히 안 읽히죠?",
+      "분리수거 날짜 놓칠 때마다 스트레스받지 않으세요?",
+      "배달앱 한글이 어려워서 편의점만 가시나요?",
+    ],
+    banPhrases: [
+      "출국 전 준비",
+      "도착 직후 첫날",
+      "비자 신청하기 전에",
+    ],
+  },
+  explore: {
+    label: "🗺 Explore · 동네·주말·시즌 경험 중",
+    readerState: "독자는 생활이 안정됐고 주말·여행·동네 탐색에 관심. 어디 갈지·뭐 할지 궁금해함.",
+    hookExamples: [
+      "주말에 서울에서 뭐할지 늘 고민되시죠?",
+      "성수동 가본 적 있으세요? 거주자 관점에서 알려드릴게요.",
+      "한국에서 벚꽃 시즌은 놓치면 1년을 기다려야 해요.",
+    ],
+    banPhrases: [
+      "ARC 발급 예약",
+      "출국 준비",
+      "도착 첫날",
+    ],
+  },
+  change: {
+    label: "🔄 Change · 연장·이사·재계약·귀국 고민",
+    readerState: "독자는 체류 후반. 비자 연장 or 이사 or 귀국을 고민하는 시점. 학기말·계약 만료 임박.",
+    hookExamples: [
+      "비자 만료일이 한 달 앞으로 다가왔어요.",
+      "이번 학기만 더 연장할지, 귀국할지 고민되죠?",
+      "어학당 계약 종료 전 한 달, 뭘 준비해야 할까요?",
+    ],
+    banPhrases: [
+      "유학 갈지 말지",
+      "도착 직후",
+      "비자 처음 신청할 때",
+    ],
+  },
+}
+
+export type JourneyStage = keyof typeof JOURNEY_STAGE_POV
+
+export function povBlockForPrompt(stage: JourneyStage | null | undefined): string {
+  if (!stage || !(stage in JOURNEY_STAGE_POV)) return ""
+  const pov = JOURNEY_STAGE_POV[stage as JourneyStage]
+  return `
+## 🎯 독자 시점 (매우 중요 — 도입부·어투에 반드시 반영)
+
+현재 주제의 독자는 아래 상태에 있어요:
+
+**${pov.label}**
+
+${pov.readerState}
+
+### 도입부 훅 예시 (이 스타일로 시작)
+${pov.hookExamples.map((x) => `- "${x}"`).join("\n")}
+
+### 이 단계에선 절대 쓰면 안 되는 표현 (시점 불일치)
+${pov.banPhrases.map((x) => `- "${x}" ← 이 독자는 아직 경험 못 한 단계라 어색함`).join("\n")}
+
+**원칙**: 독자가 아직 겪지 않은 상황을 이미 겪은 것처럼 말하지 않는다. 독자의 현재 고민·현재 질문에서 도입부를 시작한다.
+`
+}
+
 /** 프롬프트 블록으로 직렬화 */
 export function styleGuideForPrompt(opts?: { withImageSlots?: boolean }): string {
   const s = PLOTT_BLOG_STYLE

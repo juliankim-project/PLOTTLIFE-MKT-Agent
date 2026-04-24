@@ -7,7 +7,7 @@
 import "server-only"
 import { supabaseAdmin } from "@/lib/supabase/server"
 import { runAgent } from "./agents"
-import { styleGuideForPrompt } from "../blog-style"
+import { styleGuideForPrompt, povBlockForPrompt, JOURNEY_STAGE_POV, type JourneyStage } from "../blog-style"
 
 interface WriteInput {
   projectId: string
@@ -55,10 +55,17 @@ export async function writeAndStoreDraft(input: WriteInput) {
     })
     .join("\n\n")
 
+  const stage = (topic.journey_stage ?? null) as JourneyStage | null
+  const povBlock = povBlockForPrompt(stage)
+  const stageLabel = stage && JOURNEY_STAGE_POV[stage]
+    ? JOURNEY_STAGE_POV[stage].label
+    : "(미지정)"
+
   const prompt = `플라트라이프(한국 단기임대 플랫폼) 블로그 본문을 작성해줘.
 
 [주제 브리프]
 - 제목: ${topic.title}
+- 여정 단계: ${stageLabel}
 - Primary 키워드: ${topic.primary_keyword}
 - Secondary 키워드: ${(topic.secondary_keywords ?? []).join(", ")}
 - 타겟 페르소나: ${personaLabel}
@@ -69,7 +76,7 @@ export async function writeAndStoreDraft(input: WriteInput) {
 
 [아웃라인 — 이 구조 그대로]
 ${outlineBlock}
-
+${povBlock}
 ${styleGuideForPrompt({ withImageSlots: true })}
 
 [출력 요구사항]

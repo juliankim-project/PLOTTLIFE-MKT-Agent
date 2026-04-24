@@ -173,6 +173,8 @@ ${styleGuide}
         secondary_keywords: brief.secondary_keywords,
         target_kpi: brief.target_kpi,
         persona_id: idea.persona_id ?? null,
+        // 도입부 시점 매칭용 — Copywriter 가 읽어서 독자 POV 를 맞춤
+        journey_stage: idea.cluster ?? null,
         outline: brief.outline,
         cta_hints: brief.cta_hints,
         tone_guide: brief.tone_guide,
