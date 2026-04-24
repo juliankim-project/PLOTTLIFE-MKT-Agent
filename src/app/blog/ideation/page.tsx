@@ -94,9 +94,25 @@ function IdeationPage() {
 
   /* ─── 생성 옵션 ─────────────────────────────────────────── */
   const [temperature, setTemperature] = useState(0.7)
-  const [count, setCount] = useState(30)
+  const [count, setCount] = useState(10)
   const [advancedOpen, setAdvancedOpen] = useState(false)
   const [extraPrompt, setExtraPrompt] = useState("")
+
+  type GenPreset = "focused" | "balanced" | "explore"
+  const PRESETS: Record<GenPreset, { count: number; temp: number; label: string; emoji: string; sub: string; desc: string }> = {
+    focused:  { count: 5,  temp: 0.3,  label: "추천만",  emoji: "🎯", sub: "5개 · 엄선",  desc: "가장 확실한 주제만 소수 정예" },
+    balanced: { count: 10, temp: 0.7,  label: "균형",    emoji: "⚖️", sub: "10개 · 기본", desc: "실무 라운드용 적정량" },
+    explore:  { count: 30, temp: 0.95, label: "탐색",    emoji: "🌊", sub: "30개 · 다양", desc: "갭 찾기·브레인스토밍" },
+  }
+  const activePreset: GenPreset | "custom" =
+    count === PRESETS.focused.count && temperature === PRESETS.focused.temp ? "focused" :
+    count === PRESETS.balanced.count && temperature === PRESETS.balanced.temp ? "balanced" :
+    count === PRESETS.explore.count && temperature === PRESETS.explore.temp ? "explore" : "custom"
+
+  const applyPreset = (p: GenPreset) => {
+    setCount(PRESETS[p].count)
+    setTemperature(PRESETS[p].temp)
+  }
 
   /* ─── 상태 / 결과 ──────────────────────────────────────── */
   const [phase, setPhase] = useState<GenPhase>("idle")
@@ -362,41 +378,10 @@ function IdeationPage() {
             </span>
           </div>
 
-          {/* ① 목적 */}
+          {/* ① 세그먼트 */}
           <div className="compass-section">
             <div className="compass-label">
-              <span>① 목적 (Intent)</span>
-              <span className="compass-label__count">{selectedIntents.size} 선택</span>
-            </div>
-            <div className="intent-list">
-              {INTENT_ORDER.map((id) => {
-                const d = INTENT_DEFS[id]
-                const on = selectedIntents.has(id)
-                return (
-                  <div
-                    key={id}
-                    className={`intent-row${on ? " intent-row--on" : ""}`}
-                    onClick={() => toggleSet(selectedIntents, id, setSelectedIntents)}
-                  >
-                    <span className="intent-dot" style={{ background: d.color }} />
-                    <span className="intent-emoji">{d.emoji}</span>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div className="intent-name">
-                        {d.ko}{" "}
-                        <span className="intent-en">· {d.en}</span>
-                      </div>
-                      <div className="intent-desc">{d.desc}</div>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-
-          {/* ② 세그먼트 */}
-          <div className="compass-section">
-            <div className="compass-label">
-              <span>② 세그먼트 (Who)</span>
+              <span>① 세그먼트 (Who)</span>
               <span className="compass-label__count">{selectedSegments.size} 선택</span>
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
@@ -423,10 +408,10 @@ function IdeationPage() {
             </div>
           </div>
 
-          {/* ③ 상황 */}
+          {/* ② 여정 */}
           <div className="compass-section">
             <div className="compass-label">
-              <span>③ 상황 (Context)</span>
+              <span>② 여정 (Journey)</span>
               <span className="compass-label__count">
                 {selectedStages.size + selectedSeasons.size + selectedTriggers.size + selectedPains.size} 선택
               </span>
@@ -511,11 +496,70 @@ function IdeationPage() {
             </div>
           </div>
 
-          {/* Generate 버튼 */}
+          {/* ③ 목적 */}
+          <div className="compass-section">
+            <div className="compass-label">
+              <span>③ 목적 (Intent)</span>
+              <span className="compass-label__count">{selectedIntents.size} 선택</span>
+            </div>
+            <div className="intent-list">
+              {INTENT_ORDER.map((id) => {
+                const d = INTENT_DEFS[id]
+                const on = selectedIntents.has(id)
+                return (
+                  <div
+                    key={id}
+                    className={`intent-row${on ? " intent-row--on" : ""}`}
+                    onClick={() => toggleSet(selectedIntents, id, setSelectedIntents)}
+                  >
+                    <span className="intent-dot" style={{ background: d.color }} />
+                    <span className="intent-emoji">{d.emoji}</span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div className="intent-name">
+                        {d.ko}{" "}
+                        <span className="intent-en">· {d.en}</span>
+                      </div>
+                      <div className="intent-desc">{d.desc}</div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* Generate 버튼 + 프리셋 */}
           <div className="compass-generate">
+            <div className="preset-label">
+              생성 모드
+              {activePreset !== "custom" && (
+                <span className="preset-active-hint">
+                  · {PRESETS[activePreset].desc}
+                </span>
+              )}
+            </div>
+            <div className="preset-row">
+              {(Object.keys(PRESETS) as GenPreset[]).map((p) => {
+                const pd = PRESETS[p]
+                const on = activePreset === p
+                return (
+                  <button
+                    key={p}
+                    type="button"
+                    className={`preset-btn${on ? " preset-btn--on" : ""}`}
+                    onClick={() => applyPreset(p)}
+                    disabled={phase !== "idle" && phase !== "done"}
+                    title={pd.desc}
+                  >
+                    <div className="preset-btn__emoji">{pd.emoji}</div>
+                    <div className="preset-btn__label">{pd.label}</div>
+                    <div className="preset-btn__sub">{pd.sub}</div>
+                  </button>
+                )
+              })}
+            </div>
             <button
               className="bbtn bbtn--primary bbtn--lg"
-              style={{ width: "100%", justifyContent: "center" }}
+              style={{ width: "100%", justifyContent: "center", marginTop: 10 }}
               onClick={handleGenerate}
               disabled={phase !== "idle" && phase !== "done"}
             >
@@ -1049,6 +1093,51 @@ function IdeationPage() {
           position: sticky;
           bottom: 0;
         }
+        .preset-label {
+          font-size: 10.5px;
+          font-weight: 700;
+          color: var(--text-muted);
+          text-transform: uppercase;
+          letter-spacing: 0.08em;
+          margin-bottom: 6px;
+          display: flex;
+          align-items: center;
+          gap: 6px;
+        }
+        .preset-active-hint {
+          font-size: 10px;
+          color: var(--brand-600);
+          font-weight: 600;
+          text-transform: none;
+          letter-spacing: 0;
+        }
+        .preset-row {
+          display: grid;
+          grid-template-columns: repeat(3, 1fr);
+          gap: 6px;
+        }
+        .preset-btn {
+          padding: 7px 4px 6px;
+          border-radius: 8px;
+          border: 1px solid var(--border-default);
+          background: white;
+          cursor: pointer;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 1px;
+          transition: all 0.12s;
+        }
+        .preset-btn:hover:not(:disabled) { border-color: var(--brand-200); background: var(--brand-50); }
+        .preset-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .preset-btn--on {
+          background: var(--brand-50);
+          border-color: var(--brand-500);
+          box-shadow: 0 0 0 1px var(--brand-500) inset;
+        }
+        .preset-btn__emoji { font-size: 16px; line-height: 1.1; }
+        .preset-btn__label { font-size: 11.5px; font-weight: 700; color: var(--text-primary); }
+        .preset-btn__sub { font-size: 10px; color: var(--text-muted); font-weight: 500; }
         .gen-done {
           margin-top: 8px;
           padding: 6px 10px;
