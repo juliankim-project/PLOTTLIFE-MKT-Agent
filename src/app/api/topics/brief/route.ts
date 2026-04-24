@@ -11,6 +11,7 @@ const bodySchema = z.object({
   ideaId: z.string().uuid(),
   projectId: z.string().uuid().optional(),
   targetKpi: z.enum(["conversion", "traffic", "dwell_time"]).optional(),
+  quality: z.enum(["flash", "pro"]).optional(),
 })
 
 export async function POST(req: Request) {
@@ -43,6 +44,7 @@ export async function POST(req: Request) {
       projectId: projectId!,
       ideaId: parsed.data.ideaId,
       targetKpi: parsed.data.targetKpi,
+      quality: parsed.data.quality,
     })
     return NextResponse.json({ ok: true, result })
   } catch (err) {

@@ -12,6 +12,7 @@ import { styleGuideForPrompt, povBlockForPrompt, JOURNEY_STAGE_POV, type Journey
 interface WriteInput {
   projectId: string
   topicId: string
+  quality?: "flash" | "pro"
 }
 
 export async function writeAndStoreDraft(input: WriteInput) {
@@ -109,6 +110,7 @@ ${styleGuideForPrompt({ withImageSlots: true })}
     temperature: 0.5,
     maxTokens: 10000,
     json: false,
+    modelOverride: input.quality === "pro" ? "gemini-2.5-pro" : "gemini-2.5-flash",
   })
 
   let body = result.text.trim()

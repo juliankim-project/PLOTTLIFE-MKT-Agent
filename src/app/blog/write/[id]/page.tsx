@@ -65,6 +65,7 @@ export default function WriteEditor() {
   const [phase, setPhase] = useState<"idle" | "writing" | "done">("idle")
   const [progress, setProgress] = useState(0)
   const [generatingImages, setGeneratingImages] = useState(false)
+  const [quality, setQuality] = useState<"flash" | "pro">("flash")
 
   /** topic 로드 + 기존 draft 가 있는지 체크 */
   const load = useCallback(async () => {
@@ -113,7 +114,7 @@ export default function WriteEditor() {
       }>("/api/drafts/write", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ topicId }),
+        body: JSON.stringify({ topicId, quality }),
       })
       if (!j.ok || !j.result) throw new Error(j.error ?? "작성 실패")
       setDraft(j.result.draft)
@@ -264,7 +265,54 @@ export default function WriteEditor() {
                 {savedAt && <span style={{ marginLeft: 8, color: "var(--success-fg)" }}>✓ {savedAt} 저장</span>}
               </div>
             </div>
-            <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
+            <div style={{ marginLeft: "auto", display: "flex", gap: 6, alignItems: "center" }}>
+              <div
+                role="group"
+                aria-label="품질 모드"
+                style={{
+                  display: "inline-flex",
+                  background: "white",
+                  border: "1px solid var(--border-default)",
+                  borderRadius: 999,
+                  padding: 2,
+                  marginRight: 4,
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() => setQuality("flash")}
+                  title="Gemini 2.5 Flash — 빠르고 저렴 (기본)"
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 700,
+                    padding: "3px 10px",
+                    border: 0,
+                    background: quality === "flash" ? "var(--brand-600)" : "transparent",
+                    color: quality === "flash" ? "white" : "var(--text-secondary)",
+                    borderRadius: 999,
+                    cursor: "pointer",
+                  }}
+                >
+                  💨 Flash
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setQuality("pro")}
+                  title="Gemini 2.5 Pro — 느리지만 최고 품질"
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 700,
+                    padding: "3px 10px",
+                    border: 0,
+                    background: quality === "pro" ? "var(--brand-600)" : "transparent",
+                    color: quality === "pro" ? "white" : "var(--text-secondary)",
+                    borderRadius: 999,
+                    cursor: "pointer",
+                  }}
+                >
+                  🧠 Pro
+                </button>
+              </div>
               {draft && (
                 <button className="bbtn bbtn--ghost bbtn--sm" onClick={save} disabled={saving}>
                   {saving ? "저장 중…" : "💾 저장"}

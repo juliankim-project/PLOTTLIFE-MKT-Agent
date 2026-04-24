@@ -1,14 +1,17 @@
 /**
  * AI Provider — Unified interface for Anthropic / OpenAI / Google.
  *
+ * Google 은 @google/genai (신규 SDK) 사용.
+ * - Vertex AI Express Mode: GOOGLE_VERTEX_API_KEY (우선)
+ * - 구 AI Studio 키(GOOGLE_GENERATIVE_AI_API_KEY) 는 fallback 호환
+ *
  * ⚠️ Server-only. API 키는 절대 클라이언트에 노출되지 않음.
- *    Route handler에서 호출되고, 결과만 JSON으로 내려준다.
  */
 
 import "server-only"
 import Anthropic from "@anthropic-ai/sdk"
 import OpenAI from "openai"
-import { GoogleGenerativeAI } from "@google/generative-ai"
+import { GoogleGenAI } from "@google/genai"
 
 export type Provider = "anthropic" | "openai" | "google"
 
@@ -21,7 +24,7 @@ export interface CompletionOptions {
   provider: Provider
   model: string
   system?: string
-  messages: Omit<AIMessage, "role"> extends never ? never : AIMessage[]
+  messages: AIMessage[]
   temperature?: number
   max_tokens?: number
   /** JSON mode — 응답을 JSON 객체로 강제 */
@@ -40,7 +43,7 @@ export interface CompletionResult {
 // ── Singleton clients ──────────────────────────────────────────
 let _anthropic: Anthropic | null = null
 let _openai: OpenAI | null = null
-let _gemini: GoogleGenerativeAI | null = null
+let _genai: GoogleGenAI | null = null
 
 function anthropic() {
   if (!_anthropic) {
@@ -58,21 +61,29 @@ function openai() {
   }
   return _openai
 }
-function gemini() {
-  if (!_gemini) {
-    const key = process.env.GOOGLE_GENERATIVE_AI_API_KEY
-    if (!key) throw new Error("GOOGLE_GENERATIVE_AI_API_KEY not set")
-    _gemini = new GoogleGenerativeAI(key)
-  }
-  return _gemini
+
+/** Vertex Express Mode 우선 · AI Studio fallback */
+export function googleApiKey(): string {
+  const vertex = process.env.GOOGLE_VERTEX_API_KEY
+  const studio = process.env.GOOGLE_GENERATIVE_AI_API_KEY
+  const key = vertex || studio
+  if (!key) throw new Error("GOOGLE_VERTEX_API_KEY or GOOGLE_GENERATIVE_AI_API_KEY not set")
+  return key
 }
 
-// ── Available providers (키 존재 여부) ─────────────────────────
+function genai() {
+  if (!_genai) {
+    _genai = new GoogleGenAI({ apiKey: googleApiKey() })
+  }
+  return _genai
+}
+
+// ── Available providers ────────────────────────────────────────
 export function availableProviders(): Record<Provider, boolean> {
   return {
     anthropic: Boolean(process.env.ANTHROPIC_API_KEY),
     openai: Boolean(process.env.OPENAI_API_KEY),
-    google: Boolean(process.env.GOOGLE_GENERATIVE_AI_API_KEY),
+    google: Boolean(process.env.GOOGLE_VERTEX_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY),
   }
 }
 
@@ -147,55 +158,59 @@ async function callOpenAI(opts: CompletionOptions): Promise<CompletionResult> {
   }
 }
 
-// ── Google Gemini (with retry + model fallback) ───────────────
-// Vercel Hobby 서버리스 함수는 최대 60초 → 총 실행 40초 이내로 제한.
-// 같은 모델 2회 재시도 + 최대 1단계 fallback.
-// Free tier RPD (일일 요청 한도) 우선 — lite/2.0 위주로 구성.
-// gemini-flash-latest / pro-latest 는 최신(gemini-3-flash) 로 resolve 되며
-// RPD=20 으로 빠르게 소진되므로 fallback 에서 제외.
+// ── Google Gemini (Vertex Express + fallback chain) ───────────
 const GEMINI_FALLBACKS: Record<string, string[]> = {
-  "gemini-2.5-pro":          ["gemini-2.5-flash", "gemini-2.5-flash-lite"],
-  "gemini-2.5-flash":        ["gemini-2.5-flash-lite", "gemini-2.0-flash"],
-  "gemini-2.5-flash-lite":   ["gemini-2.0-flash-lite", "gemini-2.0-flash"],
-  "gemini-2.0-flash":        ["gemini-2.0-flash-lite", "gemini-2.5-flash-lite"],
-  "gemini-2.0-flash-lite":   ["gemini-2.5-flash-lite"],
-  // 아래는 fallback 시 사용 안 함 — 직접 지정했을 때만
+  "gemini-2.5-pro":          ["gemini-2.5-flash"],
+  "gemini-2.5-flash":        ["gemini-2.5-flash-lite"],
+  "gemini-2.5-flash-lite":   ["gemini-2.0-flash-lite"],
+  "gemini-2.0-flash":        ["gemini-2.0-flash-lite"],
+  "gemini-2.0-flash-lite":   [],
   "gemini-flash-latest":     ["gemini-2.5-flash"],
   "gemini-pro-latest":       ["gemini-2.5-pro", "gemini-2.5-flash"],
 }
 
-const RETRYABLE_GEMINI = /(503|429|overload|unavailable|exceed|rate)/i
+const RETRYABLE_GEMINI = /(503|429|overload|unavailable|exceed|rate|RESOURCE_EXHAUSTED)/i
 
 async function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms))
 }
 
+interface GenaiTextResponse {
+  text?: string
+  candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>
+  usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number }
+}
+
 async function callGeminiOnce(modelName: string, opts: CompletionOptions): Promise<CompletionResult> {
-  const client = gemini()
-  const model = client.getGenerativeModel({
+  const ai = genai()
+
+  // messages → contents (@google/genai 형식)
+  const contents = opts.messages.map((m) => ({
+    role: m.role === "assistant" ? "model" : "user",
+    parts: [{ text: m.content }],
+  }))
+
+  const res = (await ai.models.generateContent({
     model: modelName,
-    systemInstruction: opts.system,
-    generationConfig: {
+    contents,
+    config: {
+      systemInstruction: opts.system,
       temperature: opts.temperature,
       maxOutputTokens: opts.max_tokens,
       responseMimeType: opts.json ? "application/json" : undefined,
     },
-  })
-  const history = opts.messages.slice(0, -1).map((m) => ({
-    role: m.role === "assistant" ? "model" : "user",
-    parts: [{ text: m.content }],
-  }))
-  const last = opts.messages[opts.messages.length - 1]
-  const chat = model.startChat({ history })
-  const res = await chat.sendMessage(last?.content ?? "")
-  const text = res.response.text()
-  const usage = res.response.usageMetadata
+  })) as GenaiTextResponse
+
+  const text =
+    res.text ??
+    (res.candidates?.[0]?.content?.parts?.map((p) => p.text ?? "").join("") ?? "")
+
   return {
     text,
     provider: "google",
     model: modelName,
-    inputTokens: usage?.promptTokenCount,
-    outputTokens: usage?.candidatesTokenCount,
+    inputTokens: res.usageMetadata?.promptTokenCount,
+    outputTokens: res.usageMetadata?.candidatesTokenCount,
     raw: res,
   }
 }
@@ -205,7 +220,6 @@ async function callGemini(opts: CompletionOptions): Promise<CompletionResult> {
   let lastErr: unknown = null
   for (let i = 0; i < candidates.length; i++) {
     const modelName = candidates[i]
-    // 같은 모델 2회 재시도 (백오프 0.8s → 1.6s — 총 ~2.5s)
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
         return await callGeminiOnce(modelName, opts)
@@ -225,4 +239,10 @@ async function callGemini(opts: CompletionOptions): Promise<CompletionResult> {
   throw lastErr instanceof Error
     ? new Error(`Gemini 사용 불가 (혼잡·throttle): ${lastErr.message}`)
     : new Error("Gemini 사용 불가")
+}
+
+/** 품질 모드 → 실제 model id 매핑 */
+export type Quality = "flash" | "pro"
+export function qualityToModel(q: Quality): string {
+  return q === "pro" ? "gemini-2.5-pro" : "gemini-2.5-flash"
 }

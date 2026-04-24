@@ -24,6 +24,7 @@ const bodySchema = z.object({
   count: z.number().int().min(5).max(50).optional(),
   temperature: z.number().min(0).max(2).optional(),
   researchContext: z.string().max(4000).optional(),
+  quality: z.enum(["flash", "pro"]).optional(),
 })
 
 export async function POST(req: Request) {

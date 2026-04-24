@@ -13,6 +13,7 @@ interface BriefInput {
   projectId: string
   ideaId: string
   targetKpi?: "conversion" | "traffic" | "dwell_time"
+  quality?: "flash" | "pro"
 }
 
 interface GeneratedBrief {
@@ -130,6 +131,7 @@ ${styleGuide}
     temperature: 0.4,
     maxTokens: 10000,
     json: true,
+    modelOverride: input.quality === "pro" ? "gemini-2.5-pro" : "gemini-2.5-flash",
   })
 
   const parsed = result.json as GeneratedBrief | undefined

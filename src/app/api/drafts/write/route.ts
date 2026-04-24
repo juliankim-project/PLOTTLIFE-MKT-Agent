@@ -10,6 +10,7 @@ export const maxDuration = 60
 const bodySchema = z.object({
   topicId: z.string().uuid(),
   projectId: z.string().uuid().optional(),
+  quality: z.enum(["flash", "pro"]).optional(),
 })
 
 export async function POST(req: Request) {
@@ -41,6 +42,7 @@ export async function POST(req: Request) {
     const result = await writeAndStoreDraft({
       projectId: projectId!,
       topicId: parsed.data.topicId,
+      quality: parsed.data.quality,
     })
     return NextResponse.json({ ok: true, result })
   } catch (err) {

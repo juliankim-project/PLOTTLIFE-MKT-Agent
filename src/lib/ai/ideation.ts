@@ -64,6 +64,8 @@ export interface GenInput extends CompassInput {
   temperature?: number
   /** 리서치에서 넘어온 키워드 자유 텍스트 (하위 호환) */
   researchContext?: string
+  /** 품질 모드 — flash(기본) · pro(고품질) */
+  quality?: "flash" | "pro"
 }
 
 function pickDefs<T extends { id: string }>(list: readonly T[], ids?: string[]): T[] {
@@ -247,6 +249,7 @@ related_keywords 는 3~5개.`
       temperature: input.temperature ?? 0.7,
       maxTokens: 8000,
       json: true,
+      modelOverride: input.quality === "pro" ? "gemini-2.5-pro" : "gemini-2.5-flash",
     })
 
     type ParsedShape = { ideas?: GeneratedIdea[] }
