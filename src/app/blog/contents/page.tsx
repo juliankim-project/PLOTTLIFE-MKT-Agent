@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { Icon, PageHeader } from "../_ui"
+import { CHANNELS, type PublishChannel } from "../_lib/channels"
 
 interface DraftItem {
   id: string
@@ -18,6 +19,7 @@ interface DraftItem {
     published_at?: string | null
     provider?: string
     model?: string
+    channels?: string[]
   } | null
   created_at: string
   updated_at: string
@@ -188,11 +190,11 @@ export default function ContentsPage() {
     }
   }
 
-  /** 모달에서 status/schedule 업데이트 */
+  /** 모달에서 status/schedule/channels 업데이트 */
   const applyPublishSetting = async (
     id: string,
     action: "save" | "schedule" | "publishNow" | "unschedule",
-    scheduledAt?: string
+    opts: { scheduledAt?: string; channels?: string[] } = {}
   ) => {
     try {
       const body: Record<string, unknown> = {}
@@ -201,13 +203,14 @@ export default function ContentsPage() {
         body.scheduledAt = null
       } else if (action === "schedule") {
         body.status = "scheduled"
-        if (scheduledAt) body.scheduledAt = new Date(scheduledAt).toISOString()
+        if (opts.scheduledAt) body.scheduledAt = new Date(opts.scheduledAt).toISOString()
       } else if (action === "publishNow") {
         body.status = "published"
       } else if (action === "unschedule") {
         body.status = "approved"
         body.scheduledAt = null
       }
+      if (opts.channels) body.channels = opts.channels
       const j = await safeFetchJson<{ ok: boolean; error?: string }>(
         `/api/drafts/${id}`,
         {
@@ -231,8 +234,8 @@ export default function ContentsPage() {
         title="콘텐츠 관리"
         sub="검수에서 저장된 글들을 관리합니다. 각 콘텐츠의 발행 세팅을 모달에서 지정하세요."
         actions={[
-          { label: "← 검수", onClick: () => router.push("/blog/review") },
-          { label: "발행관리로 →", primary: true, onClick: () => router.push("/blog/publish") },
+          { label: "← 검수", href: "/blog/review" },
+          { label: "발행관리로 →", primary: true, href: "/blog/publish" },
         ]}
       />
 
@@ -567,7 +570,7 @@ function PublishSettingModal({
   onApply: (
     id: string,
     action: "save" | "schedule" | "publishNow" | "unschedule",
-    scheduledAt?: string
+    opts?: { scheduledAt?: string; channels?: string[] }
   ) => Promise<void>
 }) {
   const [mode, setMode] = useState<"now" | "schedule">(
@@ -578,13 +581,32 @@ function PublishSettingModal({
       ? draft.metadata.scheduled_at.slice(0, 16)
       : defaultScheduledInput()
   )
+  /* 채널 선택 — draft.metadata.channels 가 있으면 그걸로, 없으면 defaultEnabled 채널 자동 체크 */
+  const [selectedChannels, setSelectedChannels] = useState<Set<string>>(() => {
+    if (draft.metadata?.channels && draft.metadata.channels.length > 0) {
+      return new Set(draft.metadata.channels)
+    }
+    return new Set(CHANNELS.filter((c) => c.defaultEnabled).map((c) => c.id))
+  })
   const [busy, setBusy] = useState<false | "publishNow" | "schedule" | "unschedule">(false)
 
   const st = STATUS_LABEL[draft.status] ?? STATUS_LABEL.approved
 
+  const toggleChannel = (id: string) => {
+    setSelectedChannels((prev) => {
+      const n = new Set(prev)
+      if (n.has(id)) n.delete(id)
+      else n.add(id)
+      return n
+    })
+  }
+
   const handle = async (action: "publishNow" | "schedule" | "unschedule") => {
     setBusy(action)
-    await onApply(draft.id, action, action === "schedule" ? dt : undefined)
+    await onApply(draft.id, action, {
+      scheduledAt: action === "schedule" ? dt : undefined,
+      channels: Array.from(selectedChannels),
+    })
     setBusy(false)
   }
 
@@ -608,7 +630,7 @@ function PublishSettingModal({
         style={{
           background: "white",
           borderRadius: "var(--r-lg)",
-          width: "min(520px, 92vw)",
+          width: "min(640px, 92vw)",
           maxHeight: "90vh",
           overflow: "auto",
           boxShadow: "0 20px 50px rgba(0,0,0,0.25)",
@@ -741,10 +763,79 @@ function PublishSettingModal({
                 }}
               />
               <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 6 }}>
-                해당 시각에 발행관리 탭에서 자동으로 채널 배포됩니다.
+                해당 시각에 아래 선택한 채널로 자동 배포됩니다.
               </div>
             </div>
           )}
+
+          {/* 채널 선택 그리드 */}
+          <div>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "baseline",
+                gap: 6,
+                marginBottom: 8,
+              }}
+            >
+              <span
+                style={{
+                  fontSize: 11,
+                  fontWeight: 700,
+                  color: "var(--text-muted)",
+                  textTransform: "uppercase",
+                  letterSpacing: ".05em",
+                }}
+              >
+                발행 채널
+              </span>
+              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                · {selectedChannels.size}개 선택
+              </span>
+              <Link
+                href="/blog/publish"
+                style={{
+                  marginLeft: "auto",
+                  fontSize: 11,
+                  color: "var(--brand-600)",
+                  fontWeight: 600,
+                }}
+              >
+                채널 ON/OFF 관리 →
+              </Link>
+            </div>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: 8,
+              }}
+            >
+              {CHANNELS.map((c) => (
+                <ChannelCard
+                  key={c.id}
+                  channel={c}
+                  on={selectedChannels.has(c.id)}
+                  onToggle={() => toggleChannel(c.id)}
+                />
+              ))}
+            </div>
+            {selectedChannels.size === 0 && (
+              <div
+                style={{
+                  marginTop: 8,
+                  padding: "8px 10px",
+                  background: "#fef2f2",
+                  border: "1px solid #fecaca",
+                  borderRadius: "var(--r-md)",
+                  fontSize: 11.5,
+                  color: "#991b1b",
+                }}
+              >
+                ⚠️ 채널을 1개 이상 선택해야 발행할 수 있어요.
+              </div>
+            )}
+          </div>
         </div>
 
         {/* 푸터 */}
@@ -775,22 +866,79 @@ function PublishSettingModal({
             <button
               className="bbtn bbtn--primary"
               onClick={() => handle("publishNow")}
-              disabled={!!busy}
+              disabled={!!busy || selectedChannels.size === 0}
             >
-              {busy === "publishNow" ? "발행 중…" : "🚀 지금 발행"}
+              {busy === "publishNow" ? "발행 중…" : `🚀 ${selectedChannels.size}개 채널로 지금 발행`}
             </button>
           ) : (
             <button
               className="bbtn bbtn--primary"
               onClick={() => handle("schedule")}
-              disabled={!!busy || !dt}
+              disabled={!!busy || !dt || selectedChannels.size === 0}
             >
-              {busy === "schedule" ? "저장 중…" : "📅 예약 저장"}
+              {busy === "schedule" ? "저장 중…" : `📅 ${selectedChannels.size}개 채널로 예약`}
             </button>
           )}
         </div>
       </div>
     </div>
+  )
+}
+
+function ChannelCard({
+  channel,
+  on,
+  onToggle,
+}: {
+  channel: PublishChannel
+  on: boolean
+  onToggle: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      style={{
+        textAlign: "left",
+        padding: "10px 12px",
+        borderRadius: "var(--r-md)",
+        border: `1.5px solid ${on ? "var(--brand-500)" : "var(--border-default)"}`,
+        background: on ? "var(--brand-50)" : "white",
+        boxShadow: on ? "0 0 0 1px var(--brand-500) inset" : undefined,
+        cursor: "pointer",
+        display: "flex",
+        gap: 10,
+        alignItems: "flex-start",
+        transition: "all 0.12s",
+      }}
+    >
+      <span style={{ fontSize: 18, lineHeight: 1, marginTop: 1 }}>{channel.emoji}</span>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 1 }}>
+          {channel.name}
+        </div>
+        <div style={{ fontSize: 10.5, color: "var(--text-muted)", lineHeight: 1.4 }}>
+          {channel.format}
+        </div>
+      </div>
+      <span
+        style={{
+          width: 16,
+          height: 16,
+          borderRadius: 4,
+          border: `1.5px solid ${on ? "var(--brand-600)" : "var(--border-strong)"}`,
+          background: on ? "var(--brand-600)" : "white",
+          display: "grid",
+          placeItems: "center",
+          color: "white",
+          fontSize: 10,
+          fontWeight: 800,
+          flexShrink: 0,
+        }}
+      >
+        {on ? "✓" : ""}
+      </span>
+    </button>
   )
 }
 

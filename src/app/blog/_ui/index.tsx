@@ -1,6 +1,7 @@
 "use client"
 
 import React from "react"
+import Link from "next/link"
 import type { IconName } from "../_lib/stages"
 
 // ══════════════════════════════════════════════════════════════
@@ -194,16 +195,28 @@ export function PageHeader({
       </div>
       {actions.length > 0 && (
         <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
-          {actions.map((a) => (
-            <button
-              key={a.label}
-              onClick={a.onClick}
-              className={`bbtn ${a.primary ? "bbtn--primary" : "bbtn--ghost"}`}
-            >
-              {a.icon && <Icon name={a.icon} size={13} />}
-              {a.label}
-            </button>
-          ))}
+          {actions.map((a) => {
+            const cls = `bbtn ${a.primary ? "bbtn--primary" : "bbtn--ghost"}`
+            const inner = (
+              <>
+                {a.icon && <Icon name={a.icon} size={13} />}
+                {a.label}
+              </>
+            )
+            /* href 있으면 Link (자동 prefetch) — 페이지 전환 빠름 */
+            if (a.href) {
+              return (
+                <Link key={a.label} href={a.href} prefetch className={cls}>
+                  {inner}
+                </Link>
+              )
+            }
+            return (
+              <button key={a.label} onClick={a.onClick} className={cls}>
+                {inner}
+              </button>
+            )
+          })}
         </div>
       )}
     </div>

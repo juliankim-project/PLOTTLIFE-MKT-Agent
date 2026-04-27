@@ -210,7 +210,7 @@ export default function ReviewPage() {
         title="검수"
         sub="AI 에이전트가 SEO·팩트·출처·톤을 콘텐츠 맞춤으로 분석합니다. '검수 완료'를 누르면 콘텐츠 관리에 쌓이고, 이 화면에서 다음 초안을 이어 검수할 수 있어요."
         actions={[
-          { label: "← 콘텐츠 제작", onClick: () => router.push("/blog/write") },
+          { label: "← 콘텐츠 제작", href: "/blog/write" },
           {
             label: saving ? "완료 중…" : "✅ 검수 완료",
             icon: "check",
@@ -219,7 +219,7 @@ export default function ReviewPage() {
           {
             label: "콘텐츠 관리 →",
             primary: true,
-            onClick: () => router.push("/blog/contents"),
+            href: "/blog/contents",
           },
         ]}
       />

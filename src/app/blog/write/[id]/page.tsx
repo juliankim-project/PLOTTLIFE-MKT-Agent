@@ -227,8 +227,8 @@ export default function WriteEditor() {
         title={topic.title}
         sub={`Copywriter 에이전트가 브리프 기반으로 플라트라이프 블로그 스타일(친근한 구어체, 훅→문제→비교→Step→CTA)로 본문을 작성합니다.`}
         actions={[
-          { label: "← 콘텐츠 제작 목록", onClick: () => router.push("/blog/write") },
-          { label: "검수로 →", primary: true, onClick: () => router.push("/blog/review") },
+          { label: "← 콘텐츠 제작 목록", href: "/blog/write" },
+          { label: "검수로 →", primary: true, href: "/blog/review" },
         ]}
       />
 

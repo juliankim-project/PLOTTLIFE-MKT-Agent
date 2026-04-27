@@ -42,6 +42,8 @@ const patchSchema = z.object({
   progress_pct: z.number().int().min(0).max(100).optional(),
   /** 발행 예약 시각 (ISO8601) — metadata.scheduled_at 에 저장 */
   scheduledAt: z.string().datetime({ offset: true }).nullable().optional(),
+  /** 발행 채널 id 배열 — metadata.channels 에 저장 */
+  channels: z.array(z.string()).max(20).optional(),
 })
 
 /** 기존 metadata 를 유지하면서 특정 키만 갱신하는 helper SQL 구성 */
@@ -75,21 +77,17 @@ export async function PATCH(
   if (!parsed.success) return NextResponse.json({ ok: false, error: "invalid body" }, { status: 400 })
   const db = supabaseAdmin()
 
-  /* scheduledAt 은 metadata 에 merge 저장하고, 업데이트 페이로드에선 제외 */
-  const { scheduledAt, ...rest } = parsed.data
+  /* scheduledAt·channels 는 metadata 에 merge 저장하고, 업데이트 페이로드에선 제외 */
+  const { scheduledAt, channels, ...rest } = parsed.data
   const { data, error } = await db.from("drafts").update(rest).eq("id", id).select().single()
   if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 })
 
-  if (scheduledAt !== undefined) {
-    const patch: Record<string, unknown> = {
-      scheduled_at: scheduledAt ?? null,
-    }
-    if (parsed.data.status === "published") {
-      patch.published_at = new Date().toISOString()
-    }
-    await mergeMetadata(db, id, patch)
-  } else if (parsed.data.status === "published") {
-    await mergeMetadata(db, id, { published_at: new Date().toISOString() })
+  const metaPatch: Record<string, unknown> = {}
+  if (scheduledAt !== undefined) metaPatch.scheduled_at = scheduledAt ?? null
+  if (channels !== undefined) metaPatch.channels = channels
+  if (parsed.data.status === "published") metaPatch.published_at = new Date().toISOString()
+  if (Object.keys(metaPatch).length > 0) {
+    await mergeMetadata(db, id, metaPatch)
   }
 
   /* 최종 draft 재조회 (metadata 업데이트 반영) */
