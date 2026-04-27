@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { Icon, PageHeader } from "../../_ui"
+import { MarkdownPreview } from "../../_ui/markdown-preview"
 
 interface Draft {
   id: string
@@ -289,7 +290,7 @@ export default function ContentsEditor() {
               overflow: "auto",
             }}
           >
-            <MarkdownPreview source={body} heroImage={draft.hero_image_url ?? undefined} />
+            <MarkdownPreview body={body} heroUrl={draft.hero_image_url} />
           </div>
         </div>
       </div>
@@ -297,134 +298,3 @@ export default function ContentsEditor() {
   )
 }
 
-/* ── 간단한 Markdown 미리보기 (외부 라이브러리 없이 최소 파싱) ── */
-function MarkdownPreview({
-  source,
-  heroImage,
-}: {
-  source: string
-  heroImage?: string
-}) {
-  const lines = source.split("\n")
-  const elements: React.ReactNode[] = []
-  let key = 0
-  let paragraph: string[] = []
-
-  const flushPara = () => {
-    if (paragraph.length > 0) {
-      const text = paragraph.join(" ")
-      elements.push(
-        <p
-          key={key++}
-          style={{ margin: "0 0 12px", lineHeight: 1.7 }}
-          dangerouslySetInnerHTML={{ __html: inlineMd(text) }}
-        />
-      )
-      paragraph = []
-    }
-  }
-
-  if (heroImage) {
-    elements.push(
-      <img
-        key={key++}
-        src={heroImage}
-        alt=""
-        style={{
-          width: "100%",
-          borderRadius: 8,
-          marginBottom: 16,
-          objectFit: "cover",
-          maxHeight: 240,
-        }}
-      />
-    )
-  }
-
-  for (const raw of lines) {
-    const line = raw.trimEnd()
-
-    const slotMatch = line.match(/<!--\s*IMAGE_SLOT_(\d+)\s*:\s*(.*?)\s*-->/)
-    if (slotMatch) {
-      flushPara()
-      elements.push(
-        <div
-          key={key++}
-          style={{
-            padding: "12px 14px",
-            background: "#fff8ed",
-            border: "1px dashed #f59e0b",
-            borderRadius: 6,
-            margin: "12px 0",
-            fontSize: 12,
-            color: "#92400e",
-          }}
-        >
-          🖼 IMAGE_SLOT_{slotMatch[1]} · {slotMatch[2]}
-        </div>
-      )
-      continue
-    }
-
-    if (line.startsWith("### ")) {
-      flushPara()
-      elements.push(
-        <h3 key={key++} style={{ fontSize: 15, fontWeight: 700, margin: "16px 0 6px" }}>
-          {line.slice(4)}
-        </h3>
-      )
-      continue
-    }
-    if (line.startsWith("## ")) {
-      flushPara()
-      elements.push(
-        <h2 key={key++} style={{ fontSize: 17, fontWeight: 700, margin: "20px 0 8px", letterSpacing: "-.01em" }}>
-          {line.slice(3)}
-        </h2>
-      )
-      continue
-    }
-    if (line.startsWith("# ")) {
-      flushPara()
-      elements.push(
-        <h1 key={key++} style={{ fontSize: 20, fontWeight: 800, margin: "24px 0 10px" }}>
-          {line.slice(2)}
-        </h1>
-      )
-      continue
-    }
-    if (line.startsWith("- ")) {
-      flushPara()
-      elements.push(
-        <div
-          key={key++}
-          style={{ paddingLeft: 16, margin: "2px 0", position: "relative" }}
-          dangerouslySetInnerHTML={{ __html: "• " + inlineMd(line.slice(2)) }}
-        />
-      )
-      continue
-    }
-    if (line === "") {
-      flushPara()
-      continue
-    }
-    paragraph.push(line)
-  }
-  flushPara()
-  return <>{elements}</>
-}
-
-function inlineMd(s: string): string {
-  // ** bold **
-  let out = s.replace(/\*\*(.+?)\*\*/g, "<b>$1</b>")
-  // * italic *
-  out = out.replace(/(^|\s)\*([^*]+)\*(?=\s|$)/g, "$1<i>$2</i>")
-  // `code`
-  out = out.replace(
-    /`([^`]+)`/g,
-    '<code style="background:var(--bg-muted);padding:1px 5px;border-radius:4px;font-size:12px;">$1</code>'
-  )
-  // [text](url)
-  out = out.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" style="color:var(--brand-600);text-decoration:underline">$1</a>')
-  return out
-}
