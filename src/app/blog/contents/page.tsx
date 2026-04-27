@@ -23,7 +23,7 @@ interface DraftItem {
   updated_at: string
 }
 
-type StatusFilter = "all" | "approved" | "scheduled" | "published"
+type StatusFilter = "all" | "approved" | "scheduled" | "published" | "trash"
 
 const STATUS_LABEL: Record<string, { label: string; color: string; bg: string; border: string }> = {
   approved:  { label: "저장됨",   color: "#047857", bg: "#ecfdf5", border: "#a7f3d0" },
@@ -32,7 +32,7 @@ const STATUS_LABEL: Record<string, { label: string; color: string; bg: string; b
   drafting:  { label: "작성 중",  color: "#6b7280", bg: "#f3f4f6", border: "#e5e7eb" },
   reviewing: { label: "검수 중",  color: "#7c3aed", bg: "#f5f3ff", border: "#ddd6fe" },
   rewriting: { label: "재작성",   color: "#92400e", bg: "#fffbeb", border: "#fde68a" },
-  discarded: { label: "폐기",     color: "#6b7280", bg: "#f3f4f6", border: "#e5e7eb" },
+  discarded: { label: "휴지통",   color: "#991b1b", bg: "#fef2f2", border: "#fecaca" },
 }
 
 async function safeFetchJson<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
@@ -69,6 +69,7 @@ function formatScheduled(iso?: string | null): string {
 export default function ContentsPage() {
   const router = useRouter()
   const [contents, setContents] = useState<DraftItem[]>([])
+  const [trashed, setTrashed] = useState<DraftItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [filter, setFilter] = useState<StatusFilter>("all")
@@ -79,7 +80,7 @@ export default function ContentsPage() {
     setLoading(true)
     setError(null)
     try {
-      const [a, s, p] = await Promise.all([
+      const [a, s, p, d] = await Promise.all([
         safeFetchJson<{ ok: boolean; drafts?: DraftItem[] }>(
           "/api/drafts?status=approved&limit=100",
           { cache: "no-store" }
@@ -92,11 +93,18 @@ export default function ContentsPage() {
           "/api/drafts?status=published&limit=100",
           { cache: "no-store" }
         ),
+        safeFetchJson<{ ok: boolean; drafts?: DraftItem[] }>(
+          "/api/drafts?status=discarded&limit=100",
+          { cache: "no-store" }
+        ),
       ])
       const combined = [...(a.drafts ?? []), ...(s.drafts ?? []), ...(p.drafts ?? [])].sort(
         (a, b) => b.updated_at.localeCompare(a.updated_at)
       )
       setContents(combined)
+      setTrashed(
+        (d.drafts ?? []).sort((a, b) => b.updated_at.localeCompare(a.updated_at))
+      )
     } catch (e) {
       setError(e instanceof Error ? e.message : "오류")
     } finally {
@@ -109,14 +117,14 @@ export default function ContentsPage() {
   }, [load])
 
   const visible = useMemo(() => {
-    let list = contents
-    if (filter !== "all") list = list.filter((d) => d.status === filter)
+    let list = filter === "trash" ? trashed : contents
+    if (filter !== "all" && filter !== "trash") list = list.filter((d) => d.status === filter)
     if (search.trim()) {
       const q = search.trim().toLowerCase()
       list = list.filter((d) => d.title.toLowerCase().includes(q))
     }
     return list
-  }, [contents, filter, search])
+  }, [contents, trashed, filter, search])
 
   const counts = useMemo(() => {
     return {
@@ -124,14 +132,17 @@ export default function ContentsPage() {
       approved: contents.filter((d) => d.status === "approved").length,
       scheduled: contents.filter((d) => d.status === "scheduled").length,
       published: contents.filter((d) => d.status === "published").length,
+      trash: trashed.length,
     }
-  }, [contents])
+  }, [contents, trashed])
+
+  const isTrashView = filter === "trash"
 
   const currentModal = modalId ? contents.find((d) => d.id === modalId) ?? null : null
 
-  /** 콘텐츠 삭제 (soft) */
+  /** 콘텐츠 삭제 (soft → 휴지통으로 이동) */
   const handleDelete = async (id: string, title: string) => {
-    if (!confirm(`"${title.slice(0, 40)}${title.length > 40 ? "…" : ""}" 콘텐츠를 삭제할까요?\n\n(휴지통으로 이동되며 목록에서 사라집니다)`)) return
+    if (!confirm(`"${title.slice(0, 40)}${title.length > 40 ? "…" : ""}" 콘텐츠를 삭제할까요?\n\n(휴지통으로 이동됩니다 — 휴지통 탭에서 복원 가능)`)) return
     try {
       const j = await safeFetchJson<{ ok: boolean; error?: string }>(
         `/api/drafts/${id}`,
@@ -141,6 +152,39 @@ export default function ContentsPage() {
       await load()
     } catch (e) {
       setError(e instanceof Error ? e.message : "삭제 실패")
+    }
+  }
+
+  /** 휴지통에서 복원 (status='approved') */
+  const handleRestore = async (id: string) => {
+    try {
+      const j = await safeFetchJson<{ ok: boolean; error?: string }>(
+        `/api/drafts/${id}`,
+        {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ status: "approved" }),
+        }
+      )
+      if (!j.ok) throw new Error(j.error ?? "복원 실패")
+      await load()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "복원 실패")
+    }
+  }
+
+  /** 휴지통에서 영구 삭제 (?hard=1) */
+  const handleHardDelete = async (id: string, title: string) => {
+    if (!confirm(`"${title.slice(0, 40)}${title.length > 40 ? "…" : ""}" 영구 삭제할까요?\n\n⚠️ 복원할 수 없어요. 본문·이미지·관련 발행 이력 모두 사라집니다.`)) return
+    try {
+      const j = await safeFetchJson<{ ok: boolean; error?: string }>(
+        `/api/drafts/${id}?hard=1`,
+        { method: "DELETE" }
+      )
+      if (!j.ok) throw new Error(j.error ?? "영구삭제 실패")
+      await load()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "영구삭제 실패")
     }
   }
 
@@ -244,7 +288,7 @@ export default function ContentsPage() {
             flexWrap: "wrap",
           }}
         >
-          <div style={{ display: "flex", gap: 4 }}>
+          <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
             {(
               [
                 { k: "all",       l: "전체" },
@@ -274,6 +318,39 @@ export default function ContentsPage() {
                 </span>
               </button>
             ))}
+            {/* 휴지통 별도 — 시각적 분리 */}
+            <span style={{ width: 1, background: "var(--border-default)", margin: "0 6px" }} />
+            <button
+              onClick={() => setFilter("trash")}
+              className={`bbtn ${filter === "trash" ? "bbtn--primary" : "bbtn--ghost"} bbtn--sm`}
+              title="삭제된 콘텐츠 (복원 가능)"
+              style={
+                filter === "trash"
+                  ? { background: "#991b1b", borderColor: "#991b1b" }
+                  : { color: counts.trash > 0 ? "#991b1b" : undefined }
+              }
+            >
+              🗑 휴지통
+              <span
+                style={{
+                  fontSize: 10.5,
+                  fontWeight: 600,
+                  padding: "1px 6px",
+                  borderRadius: 8,
+                  background:
+                    filter === "trash"
+                      ? "rgba(255,255,255,.25)"
+                      : counts.trash > 0
+                      ? "#fecaca"
+                      : "var(--bg-muted)",
+                  color:
+                    filter === "trash" ? "white" : counts.trash > 0 ? "#991b1b" : "var(--text-tertiary)",
+                  marginLeft: 4,
+                }}
+              >
+                {counts.trash}
+              </span>
+            </button>
           </div>
           <input
             placeholder="🔍 제목 검색…"
@@ -314,16 +391,24 @@ export default function ContentsPage() {
               lineHeight: 1.6,
             }}
           >
-            <div style={{ fontSize: 36, marginBottom: 8, opacity: 0.5 }}>📂</div>
-            {filter === "all"
-              ? "아직 저장된 콘텐츠가 없어요."
-              : "해당 상태의 콘텐츠가 없어요."}
-            <br />
-            먼저{" "}
-            <Link href="/blog/review" style={{ color: "var(--brand-600)", fontWeight: 600 }}>
-              검수
-            </Link>
-            에서 저장해주세요.
+            <div style={{ fontSize: 36, marginBottom: 8, opacity: 0.5 }}>
+              {isTrashView ? "🗑" : "📂"}
+            </div>
+            {isTrashView ? (
+              <>휴지통이 비어있어요.</>
+            ) : (
+              <>
+                {filter === "all"
+                  ? "아직 저장된 콘텐츠가 없어요."
+                  : "해당 상태의 콘텐츠가 없어요."}
+                <br />
+                먼저{" "}
+                <Link href="/blog/review" style={{ color: "var(--brand-600)", fontWeight: 600 }}>
+                  검수
+                </Link>
+                에서 저장해주세요.
+              </>
+            )}
           </div>
         ) : (
           <div>
@@ -344,8 +429,10 @@ export default function ContentsPage() {
                   }}
                 >
                   <div
-                    onClick={() => router.push(`/blog/contents/${d.id}`)}
-                    style={{ minWidth: 0, cursor: "pointer" }}
+                    onClick={() => {
+                      if (!isTrashView) router.push(`/blog/contents/${d.id}`)
+                    }}
+                    style={{ minWidth: 0, cursor: isTrashView ? "default" : "pointer" }}
                   >
                     <div
                       style={{
@@ -395,29 +482,55 @@ export default function ContentsPage() {
                         })}
                   </span>
                   <div style={{ display: "flex", gap: 6, justifySelf: "end" }}>
-                    <button
-                      className="bbtn bbtn--ghost bbtn--sm"
-                      onClick={() => router.push(`/blog/contents/${d.id}`)}
-                      title="편집"
-                    >
-                      <Icon name="pen" size={11} /> 편집
-                    </button>
-                    <button
-                      className="bbtn bbtn--primary bbtn--sm"
-                      onClick={() => setModalId(d.id)}
-                      title="발행 세팅"
-                    >
-                      <Icon name="send" size={11} /> 발행 세팅
-                    </button>
-                    <button
-                      className="bbtn bbtn--ghost bbtn--sm content-row__del"
-                      onClick={() => handleDelete(d.id, d.title)}
-                      title="삭제 (휴지통으로 이동)"
-                      aria-label="삭제"
-                      style={{ color: "var(--danger-fg)", padding: "4px 8px" }}
-                    >
-                      🗑
-                    </button>
+                    {isTrashView ? (
+                      <>
+                        <button
+                          className="bbtn bbtn--ghost bbtn--sm"
+                          onClick={() => handleRestore(d.id)}
+                          title="복원 (저장됨으로 되돌리기)"
+                        >
+                          ↩️ 복원
+                        </button>
+                        <button
+                          className="bbtn bbtn--sm"
+                          onClick={() => handleHardDelete(d.id, d.title)}
+                          title="영구 삭제 (복원 불가)"
+                          style={{
+                            background: "#991b1b",
+                            color: "white",
+                            border: "1px solid #991b1b",
+                          }}
+                        >
+                          🔥 영구삭제
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          className="bbtn bbtn--ghost bbtn--sm"
+                          onClick={() => router.push(`/blog/contents/${d.id}`)}
+                          title="편집"
+                        >
+                          <Icon name="pen" size={11} /> 편집
+                        </button>
+                        <button
+                          className="bbtn bbtn--primary bbtn--sm"
+                          onClick={() => setModalId(d.id)}
+                          title="발행 세팅"
+                        >
+                          <Icon name="send" size={11} /> 발행 세팅
+                        </button>
+                        <button
+                          className="bbtn bbtn--ghost bbtn--sm content-row__del"
+                          onClick={() => handleDelete(d.id, d.title)}
+                          title="삭제 (휴지통으로 이동)"
+                          aria-label="삭제"
+                          style={{ color: "var(--danger-fg)", padding: "4px 8px" }}
+                        >
+                          🗑
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
               )
