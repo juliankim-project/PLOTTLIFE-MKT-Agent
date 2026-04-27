@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { Icon, PageHeader } from "../_ui"
+import { readCache, writeCache } from "../_lib/cache"
 
 interface TopicItem {
   id: string
@@ -65,30 +66,39 @@ function statusOf(t: TopicItem, draft?: DraftItem): {
 
 export default function WriteListPage() {
   const router = useRouter()
-  const [topics, setTopics] = useState<TopicItem[]>([])
-  const [drafts, setDrafts] = useState<DraftItem[]>([])
-  const [loading, setLoading] = useState(true)
+  const cachedTopics = useMemo(() => readCache<TopicItem[]>("write-topics"), [])
+  const cachedDrafts = useMemo(() => readCache<DraftItem[]>("write-drafts"), [])
+  const [topics, setTopics] = useState<TopicItem[]>(() => cachedTopics ?? [])
+  const [drafts, setDrafts] = useState<DraftItem[]>(
+    () => cachedDrafts?.filter((d) => d.status !== "discarded") ?? []
+  )
+  const [loading, setLoading] = useState(!cachedTopics || !cachedDrafts)
   const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState("")
   const [filter, setFilter] = useState<"all" | "todo" | "drafting" | "ready" | "trash">("all")
   const [busyId, setBusyId] = useState<string | null>(null)
   const [bulkBusy, setBulkBusy] = useState(false)
-  const [trashedDrafts, setTrashedDrafts] = useState<DraftItem[]>([])
+  const [trashedDrafts, setTrashedDrafts] = useState<DraftItem[]>(
+    () => cachedDrafts?.filter((d) => d.status === "discarded") ?? []
+  )
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set())
 
   const load = useCallback(async () => {
-    setLoading(true)
     try {
-      const [t, d, td] = await Promise.all([
-        safeFetchJson<{ ok: boolean; topics?: TopicItem[] }>("/api/topics?limit=100"),
-        safeFetchJson<{ ok: boolean; drafts?: DraftItem[] }>("/api/drafts?limit=100"),
+      /* 1번 호출: 전 status 한 번에 (drafts), topics 별도 1번 */
+      const [t, d] = await Promise.all([
+        safeFetchJson<{ ok: boolean; topics?: TopicItem[] }>("/api/topics?limit=200"),
         safeFetchJson<{ ok: boolean; drafts?: DraftItem[] }>(
-          "/api/drafts?status=discarded&limit=100"
+          "/api/drafts?statuses=drafting,reviewing,approved,scheduled,published,rewriting,discarded&limit=400"
         ),
       ])
-      setTopics(t.topics ?? [])
-      setDrafts(d.drafts ?? [])
-      setTrashedDrafts(td.drafts ?? [])
+      const tList = t.topics ?? []
+      const dList = d.drafts ?? []
+      writeCache("write-topics", tList)
+      writeCache("write-drafts", dList)
+      setTopics(tList)
+      setDrafts(dList.filter((x) => x.status !== "discarded"))
+      setTrashedDrafts(dList.filter((x) => x.status === "discarded"))
     } catch (e) {
       setError(e instanceof Error ? e.message : "오류")
     } finally {
@@ -211,7 +221,7 @@ export default function WriteListPage() {
     return m?.length ?? 0
   }
 
-  /* 다중 선택 휴지통 이동 */
+  /* 다중 선택 휴지통 이동 — optimistic */
   const handleBulkDelete = async () => {
     if (selectedKeys.size === 0) return
     if (
@@ -220,29 +230,51 @@ export default function WriteListPage() {
       )
     )
       return
+    const ids = Array.from(selectedKeys)
+    const targets = ids
+      .map((topicId) => allRows.find((r) => r.topic.id === topicId))
+      .filter((x): x is NonNullable<typeof x> => Boolean(x))
+
+    /* 낙관적 업데이트 */
+    const movedDrafts: DraftItem[] = []
+    const archivedTopicIds = new Set<string>()
+    for (const row of targets) {
+      if (row.draft) {
+        movedDrafts.push({ ...row.draft, status: "discarded" })
+      } else {
+        archivedTopicIds.add(row.topic.id)
+      }
+    }
+    if (movedDrafts.length > 0) {
+      const movedIds = new Set(movedDrafts.map((d) => d.id))
+      setDrafts((prev) => prev.filter((d) => !movedIds.has(d.id)))
+      setTrashedDrafts((prev) => [...movedDrafts, ...prev])
+    }
+    if (archivedTopicIds.size > 0) {
+      setTopics((prev) =>
+        prev.map((t) => (archivedTopicIds.has(t.id) ? { ...t, status: "archived" } : t))
+      )
+    }
+    setSelectedKeys(new Set())
     setBulkBusy(true)
     try {
-      const ids = Array.from(selectedKeys)
       await Promise.all(
-        ids.map(async (topicId) => {
-          const row = allRows.find((r) => r.topic.id === topicId)
-          if (!row) return
+        targets.map((row) => {
           const url = row.draft
             ? `/api/drafts/${row.draft.id}`
             : `/api/topics/${row.topic.id}`
-          await fetch(url, { method: "DELETE" })
+          return fetch(url, { method: "DELETE" })
         })
       )
-      setSelectedKeys(new Set())
-      await load()
     } catch (e) {
       setError(e instanceof Error ? e.message : "일괄 삭제 실패")
+      await load()
     } finally {
       setBulkBusy(false)
     }
   }
 
-  /** 행 단위 삭제 — draft 있으면 draft soft delete, 없으면 topic soft delete */
+  /** 행 단위 삭제 — optimistic */
   const handleDelete = async (
     row: { topic: TopicItem; draft?: DraftItem }
   ) => {
@@ -252,54 +284,61 @@ export default function WriteListPage() {
       : `"${titleClip}" 주제를 삭제할까요?\n\n(휴지통으로 이동 — 휴지통 탭에서 복원 가능)`
     if (!confirm(msg)) return
     const id = row.draft?.id ?? row.topic.id
-    setBusyId(id)
+    /* 낙관적 — 즉시 반영 */
+    if (row.draft) {
+      const moved = { ...row.draft, status: "discarded" }
+      setDrafts((prev) => prev.filter((d) => d.id !== row.draft!.id))
+      setTrashedDrafts((prev) => [moved, ...prev])
+    } else {
+      setTopics((prev) =>
+        prev.map((t) => (t.id === row.topic.id ? { ...t, status: "archived" } : t))
+      )
+    }
     try {
       const url = row.draft ? `/api/drafts/${row.draft.id}` : `/api/topics/${row.topic.id}`
       const j = await safeFetchJson<{ ok: boolean; error?: string }>(url, { method: "DELETE" })
       if (!j.ok) throw new Error(j.error ?? "삭제 실패")
-      await load()
     } catch (e) {
       setError(e instanceof Error ? e.message : "삭제 실패")
+      await load()
     } finally {
       setBusyId(null)
     }
+    void id
   }
 
-  /** 휴지통에서 복원 */
+  /** 휴지통에서 복원 — optimistic */
   const handleRestore = async (row: { topic: TopicItem; draft?: DraftItem; kind?: "topic" | "draft" }) => {
-    const id = row.draft?.id ?? row.topic.id
-    setBusyId(id)
+    if (row.kind === "draft" && row.draft) {
+      const restored = { ...row.draft, status: "drafting" }
+      setTrashedDrafts((prev) => prev.filter((d) => d.id !== row.draft!.id))
+      setDrafts((prev) => [restored, ...prev])
+    } else {
+      setTopics((prev) =>
+        prev.map((t) => (t.id === row.topic.id ? { ...t, status: "approved" } : t))
+      )
+    }
     try {
       if (row.kind === "draft" && row.draft) {
-        const j = await safeFetchJson<{ ok: boolean; error?: string }>(
-          `/api/drafts/${row.draft.id}`,
-          {
-            method: "PATCH",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ status: "drafting" }),
-          }
-        )
-        if (!j.ok) throw new Error(j.error ?? "복원 실패")
+        await fetch(`/api/drafts/${row.draft.id}`, {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ status: "drafting" }),
+        })
       } else {
-        const j = await safeFetchJson<{ ok: boolean; error?: string }>(
-          `/api/topics/${row.topic.id}`,
-          {
-            method: "PATCH",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ status: "approved" }),
-          }
-        )
-        if (!j.ok) throw new Error(j.error ?? "복원 실패")
+        await fetch(`/api/topics/${row.topic.id}`, {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ status: "approved" }),
+        })
       }
-      await load()
     } catch (e) {
       setError(e instanceof Error ? e.message : "복원 실패")
-    } finally {
-      setBusyId(null)
+      await load()
     }
   }
 
-  /** 휴지통에서 영구 삭제 */
+  /** 휴지통에서 영구 삭제 — optimistic */
   const handleHardDelete = async (
     row: { topic: TopicItem; draft?: DraftItem; kind?: "topic" | "draft" }
   ) => {
@@ -308,27 +347,20 @@ export default function WriteListPage() {
       !confirm(`"${titleClip}" 영구 삭제할까요?\n\n⚠️ 복원할 수 없어요. 본문·이미지·관련 이력 모두 사라집니다.`)
     )
       return
-    const id = row.draft?.id ?? row.topic.id
-    setBusyId(id)
+    if (row.kind === "draft" && row.draft) {
+      setTrashedDrafts((prev) => prev.filter((d) => d.id !== row.draft!.id))
+    } else {
+      setTopics((prev) => prev.filter((t) => t.id !== row.topic.id))
+    }
     try {
       if (row.kind === "draft" && row.draft) {
-        const j = await safeFetchJson<{ ok: boolean; error?: string }>(
-          `/api/drafts/${row.draft.id}?hard=1`,
-          { method: "DELETE" }
-        )
-        if (!j.ok) throw new Error(j.error ?? "영구삭제 실패")
+        await fetch(`/api/drafts/${row.draft.id}?hard=1`, { method: "DELETE" })
       } else {
-        const j = await safeFetchJson<{ ok: boolean; error?: string }>(
-          `/api/topics/${row.topic.id}?hard=1`,
-          { method: "DELETE" }
-        )
-        if (!j.ok) throw new Error(j.error ?? "영구삭제 실패")
+        await fetch(`/api/topics/${row.topic.id}?hard=1`, { method: "DELETE" })
       }
-      await load()
     } catch (e) {
       setError(e instanceof Error ? e.message : "영구삭제 실패")
-    } finally {
-      setBusyId(null)
+      await load()
     }
   }
 

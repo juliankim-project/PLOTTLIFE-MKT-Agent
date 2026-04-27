@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { Icon, PageHeader } from "../_ui"
 import { CHANNELS, type PublishChannel } from "../_lib/channels"
+import { readCache, writeCache } from "../_lib/cache"
 
 interface DraftItem {
   id: string
@@ -70,9 +71,15 @@ function formatScheduled(iso?: string | null): string {
 
 export default function ContentsPage() {
   const router = useRouter()
-  const [contents, setContents] = useState<DraftItem[]>([])
-  const [trashed, setTrashed] = useState<DraftItem[]>([])
-  const [loading, setLoading] = useState(true)
+  /* localStorage 캐시 → 첫 페인트 즉시 */
+  const cached = useMemo(() => readCache<DraftItem[]>("contents-all"), [])
+  const [contents, setContents] = useState<DraftItem[]>(
+    () => cached?.filter((d) => d.status !== "discarded") ?? []
+  )
+  const [trashed, setTrashed] = useState<DraftItem[]>(
+    () => cached?.filter((d) => d.status === "discarded") ?? []
+  )
+  const [loading, setLoading] = useState(!cached)
   const [error, setError] = useState<string | null>(null)
   const [filter, setFilter] = useState<StatusFilter>("all")
   const [search, setSearch] = useState("")
@@ -81,34 +88,18 @@ export default function ContentsPage() {
   const [bulkBusy, setBulkBusy] = useState(false)
 
   const load = useCallback(async () => {
-    setLoading(true)
     setError(null)
     try {
-      const [a, s, p, d] = await Promise.all([
-        safeFetchJson<{ ok: boolean; drafts?: DraftItem[] }>(
-          "/api/drafts?status=approved&limit=100",
-          { cache: "no-store" }
-        ),
-        safeFetchJson<{ ok: boolean; drafts?: DraftItem[] }>(
-          "/api/drafts?status=scheduled&limit=100",
-          { cache: "no-store" }
-        ),
-        safeFetchJson<{ ok: boolean; drafts?: DraftItem[] }>(
-          "/api/drafts?status=published&limit=100",
-          { cache: "no-store" }
-        ),
-        safeFetchJson<{ ok: boolean; drafts?: DraftItem[] }>(
-          "/api/drafts?status=discarded&limit=100",
-          { cache: "no-store" }
-        ),
-      ])
-      const combined = [...(a.drafts ?? []), ...(s.drafts ?? []), ...(p.drafts ?? [])].sort(
-        (a, b) => b.updated_at.localeCompare(a.updated_at)
+      const j = await safeFetchJson<{ ok: boolean; drafts?: DraftItem[] }>(
+        "/api/drafts?statuses=approved,scheduled,published,discarded&limit=400",
+        { cache: "no-store" }
       )
-      setContents(combined)
-      setTrashed(
-        (d.drafts ?? []).sort((a, b) => b.updated_at.localeCompare(a.updated_at))
+      const all = (j.drafts ?? []).sort((a, b) =>
+        b.updated_at.localeCompare(a.updated_at)
       )
+      writeCache("contents-all", all)
+      setContents(all.filter((d) => d.status !== "discarded"))
+      setTrashed(all.filter((d) => d.status === "discarded"))
     } catch (e) {
       setError(e instanceof Error ? e.message : "오류")
     } finally {
@@ -170,7 +161,7 @@ export default function ContentsPage() {
     })
   }
 
-  /** 다중 선택 휴지통 이동 (또는 휴지통 뷰에선 영구삭제) */
+  /** 다중 선택 휴지통 이동 (또는 휴지통 뷰에선 영구삭제) — optimistic */
   const handleBulkAction = async () => {
     if (selectedIds.size === 0) return
     const action = isTrashView ? "영구삭제" : "휴지통 이동"
@@ -178,18 +169,34 @@ export default function ContentsPage() {
       ? `선택한 ${selectedIds.size}개를 영구 삭제할까요?\n\n⚠️ 복원할 수 없어요.`
       : `선택한 ${selectedIds.size}개를 휴지통으로 보낼까요?\n\n(휴지통 탭에서 복원할 수 있어요)`
     if (!confirm(warn)) return
+    const ids = new Set(selectedIds)
     setBulkBusy(true)
+    /* 낙관적 업데이트 */
+    if (isTrashView) {
+      setTrashed((prev) => prev.filter((d) => !ids.has(d.id)))
+    } else {
+      const moved: DraftItem[] = []
+      setContents((prev) =>
+        prev.filter((d) => {
+          if (ids.has(d.id)) {
+            moved.push({ ...d, status: "discarded" })
+            return false
+          }
+          return true
+        })
+      )
+      setTrashed((prev) => [...moved, ...prev])
+    }
+    setSelectedIds(new Set())
     try {
-      const ids = Array.from(selectedIds)
       await Promise.all(
-        ids.map((id) =>
+        Array.from(ids).map((id) =>
           fetch(`/api/drafts/${id}${isTrashView ? "?hard=1" : ""}`, { method: "DELETE" })
         )
       )
-      setSelectedIds(new Set())
-      await load()
     } catch (e) {
       setError(e instanceof Error ? e.message : `${action} 실패`)
+      await load()
     } finally {
       setBulkBusy(false)
     }
@@ -197,23 +204,30 @@ export default function ContentsPage() {
 
   const currentModal = modalId ? contents.find((d) => d.id === modalId) ?? null : null
 
-  /** 콘텐츠 삭제 (soft → 휴지통으로 이동) */
+  /** 콘텐츠 삭제 (soft → 휴지통으로 이동) — optimistic */
   const handleDelete = async (id: string, title: string) => {
     if (!confirm(`"${title.slice(0, 40)}${title.length > 40 ? "…" : ""}" 콘텐츠를 삭제할까요?\n\n(휴지통으로 이동됩니다 — 휴지통 탭에서 복원 가능)`)) return
+    /* 낙관적 업데이트 — 즉시 반영 */
+    const removed = contents.find((d) => d.id === id)
+    setContents((prev) => prev.filter((d) => d.id !== id))
+    if (removed) setTrashed((prev) => [{ ...removed, status: "discarded" }, ...prev])
     try {
       const j = await safeFetchJson<{ ok: boolean; error?: string }>(
         `/api/drafts/${id}`,
         { method: "DELETE" }
       )
       if (!j.ok) throw new Error(j.error ?? "삭제 실패")
-      await load()
     } catch (e) {
       setError(e instanceof Error ? e.message : "삭제 실패")
+      await load() // 롤백 위해 재조회
     }
   }
 
-  /** 휴지통에서 복원 (status='approved') */
+  /** 휴지통에서 복원 — optimistic */
   const handleRestore = async (id: string) => {
+    const restored = trashed.find((d) => d.id === id)
+    setTrashed((prev) => prev.filter((d) => d.id !== id))
+    if (restored) setContents((prev) => [{ ...restored, status: "approved" }, ...prev])
     try {
       const j = await safeFetchJson<{ ok: boolean; error?: string }>(
         `/api/drafts/${id}`,
@@ -224,24 +238,25 @@ export default function ContentsPage() {
         }
       )
       if (!j.ok) throw new Error(j.error ?? "복원 실패")
-      await load()
     } catch (e) {
       setError(e instanceof Error ? e.message : "복원 실패")
+      await load()
     }
   }
 
-  /** 휴지통에서 영구 삭제 (?hard=1) */
+  /** 휴지통에서 영구 삭제 — optimistic */
   const handleHardDelete = async (id: string, title: string) => {
     if (!confirm(`"${title.slice(0, 40)}${title.length > 40 ? "…" : ""}" 영구 삭제할까요?\n\n⚠️ 복원할 수 없어요. 본문·이미지·관련 발행 이력 모두 사라집니다.`)) return
+    setTrashed((prev) => prev.filter((d) => d.id !== id))
     try {
       const j = await safeFetchJson<{ ok: boolean; error?: string }>(
         `/api/drafts/${id}?hard=1`,
         { method: "DELETE" }
       )
       if (!j.ok) throw new Error(j.error ?? "영구삭제 실패")
-      await load()
     } catch (e) {
       setError(e instanceof Error ? e.message : "영구삭제 실패")
+      await load()
     }
   }
 
