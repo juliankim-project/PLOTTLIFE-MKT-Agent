@@ -8,8 +8,10 @@ export async function GET(req: Request) {
   const url = new URL(req.url)
   const projectId = url.searchParams.get("projectId")
   const status = url.searchParams.get("status")
+  /** 다중 상태 — 콤마 구분 (예: ?statuses=approved,scheduled,published,discarded) */
+  const statuses = url.searchParams.get("statuses")
   const topicId = url.searchParams.get("topicId")
-  const limit = Math.min(Number(url.searchParams.get("limit") ?? 50), 200)
+  const limit = Math.min(Number(url.searchParams.get("limit") ?? 50), 500)
 
   const db = supabaseAdmin()
   let q = db
@@ -31,6 +33,13 @@ export async function GET(req: Request) {
     if (proj) q = q.eq("project_id", proj.id)
   }
   if (status) q = q.eq("status", status)
+  else if (statuses) {
+    const list = statuses
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean)
+    if (list.length > 0) q = q.in("status", list)
+  }
   if (topicId) q = q.eq("topic_id", topicId)
 
   const { data, error } = await q
