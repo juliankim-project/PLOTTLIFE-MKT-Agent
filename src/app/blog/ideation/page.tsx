@@ -352,12 +352,12 @@ function IdeationPage() {
         actions={[
           {
             label: "← 키워드 트렌드",
-            onClick: () => router.push("/blog/research"),
+            href: "/blog/research",
           },
           {
             label: "브리프 작성으로 →",
             primary: true,
-            onClick: () => router.push("/blog/topics"),
+            href: "/blog/topics",
           },
         ]}
       />

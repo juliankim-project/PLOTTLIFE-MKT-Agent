@@ -18,7 +18,7 @@ export default function AnalyzePage() {
         title="성과분석"
         sub="트래픽·예약 전환·SERP 랭킹을 학습해 다음 여정(리서치)의 인풋으로 회수합니다."
         actions={[
-          { label: "← 발행관리", onClick: () => router.push("/blog/publish") },
+          { label: "← 발행관리", href: "/blog/publish" },
           { label: "리서치에 피드백", primary: true, icon: "sparkles" },
         ]}
       />

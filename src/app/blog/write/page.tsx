@@ -73,8 +73,8 @@ export default function WriteListPage() {
         title="콘텐츠 제작"
         sub="브리프 작성에서 확정된 브리프 1개를 선택하면 Copywriter 에이전트가 플라트 블로그 스타일로 본문을 작성합니다."
         actions={[
-          { label: "← 브리프 작성", onClick: () => router.push("/blog/topics") },
-          { label: "검수로 →", primary: true, onClick: () => router.push("/blog/review") },
+          { label: "← 브리프 작성", href: "/blog/topics" },
+          { label: "검수로 →", primary: true, href: "/blog/review" },
         ]}
       />
 

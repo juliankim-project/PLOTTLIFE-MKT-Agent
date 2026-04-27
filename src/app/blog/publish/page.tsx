@@ -1,19 +1,9 @@
 "use client"
 
-import { useRouter } from "next/navigation"
-import { Icon, PageHeader, Toggle } from "../_ui"
-
-const CHANNELS = [
-  { n: "플라트 오피셜 블로그", fmt: "롱폼 HTML", on: true, date: "2026.04.24 10:00", a: "blog@plottlife" },
-  { n: "네이버 블로그", fmt: "에디터 변환", on: true, date: "2026.04.24 10:30", a: "naver-bot" },
-  { n: "뉴스레터", fmt: "요약본 + CTA", on: true, date: "2026.04.25 08:00", a: "stibee" },
-  { n: "Medium (영문)", fmt: "번역 영문", on: false, date: "—", a: "—" },
-  { n: "Instagram 카드", fmt: "카드 뉴스 5컷", on: true, date: "2026.04.24 14:00", a: "ig-official" },
-  { n: "X / Threads", fmt: "스레드 트윗", on: true, date: "2026.04.24 15:30", a: "x-official" },
-]
+import { PageHeader, Toggle } from "../_ui"
+import { CHANNELS } from "../_lib/channels"
 
 export default function PublishPage() {
-  const router = useRouter()
   return (
     <div className="bpage fade-up">
       <PageHeader
@@ -21,8 +11,8 @@ export default function PublishPage() {
         title="발행관리"
         sub="오피셜 블로그·네이버·뉴스레터·소셜·Medium 영문 채널별 On/Off 와 발행 타이밍을 관리합니다. 개별 콘텐츠의 발행 세팅은 콘텐츠 관리에서 하세요."
         actions={[
-          { label: "← 콘텐츠 관리", onClick: () => router.push("/blog/contents") },
-          { label: "성과분석으로 →", primary: true, onClick: () => router.push("/blog/analyze") },
+          { label: "← 콘텐츠 관리", href: "/blog/contents" },
+          { label: "성과분석으로 →", primary: true, href: "/blog/analyze" },
         ]}
       />
 
@@ -32,31 +22,33 @@ export default function PublishPage() {
             <div className="bcard__title">채널 매트릭스</div>
           </div>
           <div style={{ padding: 18 }}>
-            {CHANNELS.map((c, i) => (
+            {CHANNELS.map((c) => (
               <div
-                key={i}
+                key={c.id}
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "1fr 120px 170px 110px 60px",
-                  gap: 10,
+                  gridTemplateColumns: "32px 1fr 130px 110px 60px",
+                  gap: 12,
                   alignItems: "center",
                   padding: "12px 0",
                   borderBottom: "1px solid var(--border-subtle)",
                 }}
               >
+                <div style={{ fontSize: 22, lineHeight: 1, textAlign: "center" }}>{c.emoji}</div>
                 <div>
-                  <div style={{ fontSize: 13.5, fontWeight: 600 }}>{c.n}</div>
-                  <div style={{ fontSize: 11.5, color: "var(--text-muted)" }}>{c.a}</div>
+                  <div style={{ fontSize: 13.5, fontWeight: 700 }}>{c.name}</div>
+                  <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 2 }}>
+                    {c.desc}
+                  </div>
+                  <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 2 }}>
+                    계정: {c.account}
+                  </div>
                 </div>
-                <span className="bchip">{c.fmt}</span>
-                <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>
-                  <Icon name="calendar" size={11} style={{ marginRight: 4, verticalAlign: -1 }} />
-                  {c.date}
+                <span className="bchip">{c.format}</span>
+                <span className={`bchip ${c.defaultEnabled ? "bchip--success" : ""}`}>
+                  {c.defaultEnabled ? "활성" : "비활성"}
                 </span>
-                <span className={`bchip ${c.on ? "bchip--success" : ""}`}>
-                  {c.on ? "예약됨" : "비활성"}
-                </span>
-                <Toggle defaultOn={c.on} />
+                <Toggle defaultOn={c.defaultEnabled} />
               </div>
             ))}
           </div>

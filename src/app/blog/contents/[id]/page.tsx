@@ -151,7 +151,7 @@ export default function ContentsEditor() {
             : `마지막 수정 ${new Date(draft.updated_at).toLocaleString("ko-KR")}`
         }
         actions={[
-          { label: "← 목록", onClick: () => router.push("/blog/contents") },
+          { label: "← 목록", href: "/blog/contents" },
           {
             label: saving ? "저장 중…" : "💾 저장",
             onClick: save,
