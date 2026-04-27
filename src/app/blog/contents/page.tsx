@@ -107,6 +107,17 @@ export default function ContentsPage() {
     }
   }, [])
 
+  /** optimistic 후 캐시 동기화 — state 변경 한 다음 fresh state 로 cache write */
+  const syncCacheNow = useCallback(
+    (nextContents: DraftItem[], nextTrashed: DraftItem[]) => {
+      const merged = [...nextContents, ...nextTrashed].sort((a, b) =>
+        b.updated_at.localeCompare(a.updated_at)
+      )
+      writeCache("contents-all", merged)
+    },
+    []
+  )
+
   useEffect(() => {
     load()
   }, [load])
@@ -161,7 +172,7 @@ export default function ContentsPage() {
     })
   }
 
-  /** 다중 선택 휴지통 이동 (또는 휴지통 뷰에선 영구삭제) — optimistic */
+  /** 다중 선택 휴지통 이동 (또는 휴지통 뷰에선 영구삭제) — optimistic + cache sync */
   const handleBulkAction = async () => {
     if (selectedIds.size === 0) return
     const action = isTrashView ? "영구삭제" : "휴지통 이동"
@@ -171,22 +182,25 @@ export default function ContentsPage() {
     if (!confirm(warn)) return
     const ids = new Set(selectedIds)
     setBulkBusy(true)
-    /* 낙관적 업데이트 */
+    /* 낙관적 업데이트 + cache sync */
+    let nextContents = contents
+    let nextTrashed = trashed
     if (isTrashView) {
-      setTrashed((prev) => prev.filter((d) => !ids.has(d.id)))
+      nextTrashed = trashed.filter((d) => !ids.has(d.id))
     } else {
       const moved: DraftItem[] = []
-      setContents((prev) =>
-        prev.filter((d) => {
-          if (ids.has(d.id)) {
-            moved.push({ ...d, status: "discarded" })
-            return false
-          }
-          return true
-        })
-      )
-      setTrashed((prev) => [...moved, ...prev])
+      nextContents = contents.filter((d) => {
+        if (ids.has(d.id)) {
+          moved.push({ ...d, status: "discarded" })
+          return false
+        }
+        return true
+      })
+      nextTrashed = [...moved, ...trashed]
     }
+    setContents(nextContents)
+    setTrashed(nextTrashed)
+    syncCacheNow(nextContents, nextTrashed)
     setSelectedIds(new Set())
     try {
       await Promise.all(
@@ -204,13 +218,15 @@ export default function ContentsPage() {
 
   const currentModal = modalId ? contents.find((d) => d.id === modalId) ?? null : null
 
-  /** 콘텐츠 삭제 (soft → 휴지통으로 이동) — optimistic */
+  /** 콘텐츠 삭제 (soft → 휴지통으로 이동) — optimistic + cache sync */
   const handleDelete = async (id: string, title: string) => {
     if (!confirm(`"${title.slice(0, 40)}${title.length > 40 ? "…" : ""}" 콘텐츠를 삭제할까요?\n\n(휴지통으로 이동됩니다 — 휴지통 탭에서 복원 가능)`)) return
-    /* 낙관적 업데이트 — 즉시 반영 */
     const removed = contents.find((d) => d.id === id)
-    setContents((prev) => prev.filter((d) => d.id !== id))
-    if (removed) setTrashed((prev) => [{ ...removed, status: "discarded" }, ...prev])
+    const nextContents = contents.filter((d) => d.id !== id)
+    const nextTrashed = removed ? [{ ...removed, status: "discarded" }, ...trashed] : trashed
+    setContents(nextContents)
+    setTrashed(nextTrashed)
+    syncCacheNow(nextContents, nextTrashed)
     try {
       const j = await safeFetchJson<{ ok: boolean; error?: string }>(
         `/api/drafts/${id}`,
@@ -219,15 +235,20 @@ export default function ContentsPage() {
       if (!j.ok) throw new Error(j.error ?? "삭제 실패")
     } catch (e) {
       setError(e instanceof Error ? e.message : "삭제 실패")
-      await load() // 롤백 위해 재조회
+      await load()
     }
   }
 
-  /** 휴지통에서 복원 — optimistic */
+  /** 휴지통에서 복원 — optimistic + cache sync */
   const handleRestore = async (id: string) => {
     const restored = trashed.find((d) => d.id === id)
-    setTrashed((prev) => prev.filter((d) => d.id !== id))
-    if (restored) setContents((prev) => [{ ...restored, status: "approved" }, ...prev])
+    const nextTrashed = trashed.filter((d) => d.id !== id)
+    const nextContents = restored
+      ? [{ ...restored, status: "approved" }, ...contents]
+      : contents
+    setTrashed(nextTrashed)
+    setContents(nextContents)
+    syncCacheNow(nextContents, nextTrashed)
     try {
       const j = await safeFetchJson<{ ok: boolean; error?: string }>(
         `/api/drafts/${id}`,
@@ -244,10 +265,12 @@ export default function ContentsPage() {
     }
   }
 
-  /** 휴지통에서 영구 삭제 — optimistic */
+  /** 휴지통에서 영구 삭제 — optimistic + cache sync */
   const handleHardDelete = async (id: string, title: string) => {
     if (!confirm(`"${title.slice(0, 40)}${title.length > 40 ? "…" : ""}" 영구 삭제할까요?\n\n⚠️ 복원할 수 없어요. 본문·이미지·관련 발행 이력 모두 사라집니다.`)) return
-    setTrashed((prev) => prev.filter((d) => d.id !== id))
+    const nextTrashed = trashed.filter((d) => d.id !== id)
+    setTrashed(nextTrashed)
+    syncCacheNow(contents, nextTrashed)
     try {
       const j = await safeFetchJson<{ ok: boolean; error?: string }>(
         `/api/drafts/${id}?hard=1`,

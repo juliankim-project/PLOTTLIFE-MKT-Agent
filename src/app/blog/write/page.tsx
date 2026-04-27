@@ -106,6 +106,19 @@ export default function WriteListPage() {
     }
   }, [])
 
+  /** mutation 후 캐시 즉시 동기화 */
+  const syncCacheNow = useCallback(
+    (
+      nextTopics: TopicItem[],
+      nextActiveDrafts: DraftItem[],
+      nextTrashedDrafts: DraftItem[]
+    ) => {
+      writeCache("write-topics", nextTopics)
+      writeCache("write-drafts", [...nextActiveDrafts, ...nextTrashedDrafts])
+    },
+    []
+  )
+
   useEffect(() => {
     load()
   }, [load])
@@ -235,7 +248,7 @@ export default function WriteListPage() {
       .map((topicId) => allRows.find((r) => r.topic.id === topicId))
       .filter((x): x is NonNullable<typeof x> => Boolean(x))
 
-    /* 낙관적 업데이트 */
+    /* 낙관적 업데이트 + cache sync */
     const movedDrafts: DraftItem[] = []
     const archivedTopicIds = new Set<string>()
     for (const row of targets) {
@@ -245,16 +258,21 @@ export default function WriteListPage() {
         archivedTopicIds.add(row.topic.id)
       }
     }
-    if (movedDrafts.length > 0) {
-      const movedIds = new Set(movedDrafts.map((d) => d.id))
-      setDrafts((prev) => prev.filter((d) => !movedIds.has(d.id)))
-      setTrashedDrafts((prev) => [...movedDrafts, ...prev])
-    }
-    if (archivedTopicIds.size > 0) {
-      setTopics((prev) =>
-        prev.map((t) => (archivedTopicIds.has(t.id) ? { ...t, status: "archived" } : t))
-      )
-    }
+    const movedIds = new Set(movedDrafts.map((d) => d.id))
+    const nextDrafts =
+      movedDrafts.length > 0 ? drafts.filter((d) => !movedIds.has(d.id)) : drafts
+    const nextTrashedDrafts =
+      movedDrafts.length > 0 ? [...movedDrafts, ...trashedDrafts] : trashedDrafts
+    const nextTopics =
+      archivedTopicIds.size > 0
+        ? topics.map((t) =>
+            archivedTopicIds.has(t.id) ? { ...t, status: "archived" } : t
+          )
+        : topics
+    setDrafts(nextDrafts)
+    setTrashedDrafts(nextTrashedDrafts)
+    setTopics(nextTopics)
+    syncCacheNow(nextTopics, nextDrafts, nextTrashedDrafts)
     setSelectedKeys(new Set())
     setBulkBusy(true)
     try {
@@ -274,7 +292,7 @@ export default function WriteListPage() {
     }
   }
 
-  /** 행 단위 삭제 — optimistic */
+  /** 행 단위 삭제 — optimistic + cache sync */
   const handleDelete = async (
     row: { topic: TopicItem; draft?: DraftItem }
   ) => {
@@ -283,17 +301,22 @@ export default function WriteListPage() {
       ? `"${titleClip}" 작성된 본문을 삭제할까요?\n\n(휴지통으로 이동 — 휴지통 탭에서 복원 가능)`
       : `"${titleClip}" 주제를 삭제할까요?\n\n(휴지통으로 이동 — 휴지통 탭에서 복원 가능)`
     if (!confirm(msg)) return
-    const id = row.draft?.id ?? row.topic.id
-    /* 낙관적 — 즉시 반영 */
+    let nextTopics = topics
+    let nextDrafts = drafts
+    let nextTrashedDrafts = trashedDrafts
     if (row.draft) {
       const moved = { ...row.draft, status: "discarded" }
-      setDrafts((prev) => prev.filter((d) => d.id !== row.draft!.id))
-      setTrashedDrafts((prev) => [moved, ...prev])
+      nextDrafts = drafts.filter((d) => d.id !== row.draft!.id)
+      nextTrashedDrafts = [moved, ...trashedDrafts]
     } else {
-      setTopics((prev) =>
-        prev.map((t) => (t.id === row.topic.id ? { ...t, status: "archived" } : t))
+      nextTopics = topics.map((t) =>
+        t.id === row.topic.id ? { ...t, status: "archived" } : t
       )
     }
+    setTopics(nextTopics)
+    setDrafts(nextDrafts)
+    setTrashedDrafts(nextTrashedDrafts)
+    syncCacheNow(nextTopics, nextDrafts, nextTrashedDrafts)
     try {
       const url = row.draft ? `/api/drafts/${row.draft.id}` : `/api/topics/${row.topic.id}`
       const j = await safeFetchJson<{ ok: boolean; error?: string }>(url, { method: "DELETE" })
@@ -304,20 +327,26 @@ export default function WriteListPage() {
     } finally {
       setBusyId(null)
     }
-    void id
   }
 
-  /** 휴지통에서 복원 — optimistic */
+  /** 휴지통에서 복원 — optimistic + cache sync */
   const handleRestore = async (row: { topic: TopicItem; draft?: DraftItem; kind?: "topic" | "draft" }) => {
+    let nextTopics = topics
+    let nextDrafts = drafts
+    let nextTrashedDrafts = trashedDrafts
     if (row.kind === "draft" && row.draft) {
       const restored = { ...row.draft, status: "drafting" }
-      setTrashedDrafts((prev) => prev.filter((d) => d.id !== row.draft!.id))
-      setDrafts((prev) => [restored, ...prev])
+      nextTrashedDrafts = trashedDrafts.filter((d) => d.id !== row.draft!.id)
+      nextDrafts = [restored, ...drafts]
     } else {
-      setTopics((prev) =>
-        prev.map((t) => (t.id === row.topic.id ? { ...t, status: "approved" } : t))
+      nextTopics = topics.map((t) =>
+        t.id === row.topic.id ? { ...t, status: "approved" } : t
       )
     }
+    setTopics(nextTopics)
+    setDrafts(nextDrafts)
+    setTrashedDrafts(nextTrashedDrafts)
+    syncCacheNow(nextTopics, nextDrafts, nextTrashedDrafts)
     try {
       if (row.kind === "draft" && row.draft) {
         await fetch(`/api/drafts/${row.draft.id}`, {
@@ -338,7 +367,7 @@ export default function WriteListPage() {
     }
   }
 
-  /** 휴지통에서 영구 삭제 — optimistic */
+  /** 휴지통에서 영구 삭제 — optimistic + cache sync */
   const handleHardDelete = async (
     row: { topic: TopicItem; draft?: DraftItem; kind?: "topic" | "draft" }
   ) => {
@@ -347,11 +376,16 @@ export default function WriteListPage() {
       !confirm(`"${titleClip}" 영구 삭제할까요?\n\n⚠️ 복원할 수 없어요. 본문·이미지·관련 이력 모두 사라집니다.`)
     )
       return
+    let nextTopics = topics
+    let nextTrashedDrafts = trashedDrafts
     if (row.kind === "draft" && row.draft) {
-      setTrashedDrafts((prev) => prev.filter((d) => d.id !== row.draft!.id))
+      nextTrashedDrafts = trashedDrafts.filter((d) => d.id !== row.draft!.id)
     } else {
-      setTopics((prev) => prev.filter((t) => t.id !== row.topic.id))
+      nextTopics = topics.filter((t) => t.id !== row.topic.id)
     }
+    setTopics(nextTopics)
+    setTrashedDrafts(nextTrashedDrafts)
+    syncCacheNow(nextTopics, drafts, nextTrashedDrafts)
     try {
       if (row.kind === "draft" && row.draft) {
         await fetch(`/api/drafts/${row.draft.id}?hard=1`, { method: "DELETE" })
