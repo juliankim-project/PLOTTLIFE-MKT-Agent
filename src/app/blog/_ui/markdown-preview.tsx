@@ -436,19 +436,6 @@ export function AiImage({
       >
         <GeminiMark size={16} />
       </span>
-      {alt && !hero && (
-        <div
-          style={{
-            fontSize: 11,
-            color: "var(--text-muted)",
-            textAlign: "center",
-            marginTop: 6,
-            fontStyle: "italic",
-          }}
-        >
-          {alt}
-        </div>
-      )}
     </div>
   )
 }
