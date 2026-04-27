@@ -355,31 +355,50 @@ export default function WriteEditor() {
             </div>
           </div>
 
-          {phase === "writing" && (
-            <div style={{ padding: "12px 20px", background: "var(--brand-50)" }}>
+          {(phase === "writing" || generatingImages) && (
+            <div style={{ padding: "10px 20px", background: "var(--brand-50)", borderBottom: "1px solid var(--brand-200)" }}>
               <div className="bar-track" style={{ height: 4 }}>
                 <div
                   className="bar-fill"
-                  style={{ width: `${progress}%`, transition: "width 1.2s linear" }}
+                  style={{
+                    width: `${phase === "writing" ? progress : 65}%`,
+                    transition: "width 1.2s linear",
+                    animation: generatingImages ? "writeBar 1.6s ease-in-out infinite" : undefined,
+                  }}
                 />
               </div>
               <div
                 style={{
                   marginTop: 8,
-                  fontSize: 11,
+                  fontSize: 11.5,
                   color: "var(--brand-700)",
                   display: "flex",
                   justifyContent: "space-between",
+                  fontWeight: 600,
                 }}
               >
-                <span>{phaseLabel[phase]}</span>
-                <span className="text-mono">{progress}%</span>
+                <span>
+                  {generatingImages
+                    ? "🎨 이미지 생성 중… (Imagen 4)"
+                    : phaseLabel[phase]}
+                </span>
+                <span className="text-mono">
+                  {generatingImages ? "—" : `${progress}%`}
+                </span>
               </div>
             </div>
           )}
 
           {body ? (
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", height: "70vh", minHeight: 520 }}>
+            <div
+              style={{
+                position: "relative",
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                height: "70vh",
+                minHeight: 520,
+              }}
+            >
               <textarea
                 value={body}
                 onChange={(e) => setBody(e.target.value)}
@@ -413,6 +432,96 @@ export default function WriteEditor() {
                   generatingImages={generatingImages}
                 />
               </div>
+
+              {/* 다시 작성 중 오버레이 */}
+              {phase === "writing" && (
+                <div
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    background: "rgba(15, 23, 42, 0.50)",
+                    backdropFilter: "blur(4px)",
+                    WebkitBackdropFilter: "blur(4px)",
+                    display: "grid",
+                    placeItems: "center",
+                    zIndex: 10,
+                    animation: "modal-fade-in 0.18s ease-out",
+                  }}
+                >
+                  <div
+                    style={{
+                      background: "white",
+                      borderRadius: 14,
+                      padding: "24px 28px",
+                      width: "min(360px, 80%)",
+                      boxShadow:
+                        "0 1px 3px rgba(15,23,42,0.1), 0 24px 60px rgba(15,23,42,0.30)",
+                      textAlign: "center",
+                    }}
+                  >
+                    <div style={{ fontSize: 36, marginBottom: 10, animation: "skeleton-pulse 1.4s ease-in-out infinite" }}>
+                      ✍️
+                    </div>
+                    <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 6, letterSpacing: "-0.01em" }}>
+                      Copywriter 가 본문을 다시 쓰고 있어요
+                    </div>
+                    <div style={{ fontSize: 11.5, color: "var(--text-muted)", lineHeight: 1.5, marginBottom: 14 }}>
+                      플라트 스타일 + 여정 POV 적용 · 시각 요소 6개 이상 포함
+                      <br />
+                      약 30~60초 소요
+                    </div>
+                    <div className="bar-track" style={{ height: 6, borderRadius: 999 }}>
+                      <div
+                        className="bar-fill"
+                        style={{
+                          width: `${progress}%`,
+                          transition: "width 1.2s linear",
+                          borderRadius: 999,
+                        }}
+                      />
+                    </div>
+                    <div
+                      style={{
+                        marginTop: 8,
+                        display: "flex",
+                        justifyContent: "space-between",
+                        fontSize: 11,
+                        color: "var(--text-muted)",
+                      }}
+                    >
+                      <span>{phaseLabel[phase]}</span>
+                      <span className="text-mono" style={{ fontWeight: 700, color: "var(--brand-700)" }}>{progress}%</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* 이미지 생성 중 — 본문은 그대로, 우상단에 작은 인디케이터 */}
+              {generatingImages && phase !== "writing" && (
+                <div
+                  style={{
+                    position: "absolute",
+                    top: 12,
+                    right: 12,
+                    background: "white",
+                    border: "1px solid var(--brand-200)",
+                    borderRadius: 999,
+                    padding: "6px 14px 6px 8px",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    boxShadow: "0 4px 12px rgba(15,23,42,0.12)",
+                    zIndex: 10,
+                    fontSize: 12,
+                    fontWeight: 600,
+                    color: "var(--brand-700)",
+                    animation: "modal-fade-in 0.18s ease-out",
+                  }}
+                >
+                  <span style={{ fontSize: 16, animation: "skeleton-pulse 1.4s ease-in-out infinite" }}>🎨</span>
+                  Imagen 4 가 이미지 생성 중…
+                </div>
+              )}
             </div>
           ) : (
             <div
@@ -525,6 +634,18 @@ export default function WriteEditor() {
           animation: write-spin 0.8s linear infinite;
           width: 12px; height: 12px;
           margin-right: 4px;
+        }
+        @keyframes modal-fade-in {
+          from { opacity: 0; }
+          to   { opacity: 1; }
+        }
+        @keyframes skeleton-pulse {
+          0%, 100% { transform: scale(1); opacity: 1; }
+          50%      { transform: scale(1.08); opacity: 0.7; }
+        }
+        @keyframes writeBar {
+          0%, 100% { transform: translateX(0); }
+          50%      { transform: translateX(20%); }
         }
       `}</style>
     </div>
