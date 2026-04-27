@@ -108,31 +108,17 @@ export function MarkdownPreview({ body, title, heroUrl, generatingImages = false
   const flushTable = (idx: number) => {
     if (tableRows && tableRows.length > 0) {
       const [head, ...rest] = tableRows
+      const align = tableAlign
       elements.push(
-        <div key={`tbl-${idx}`} style={{ overflowX: "auto", margin: "14px 0" }}>
-          <table
-            style={{
-              width: "100%",
-              borderCollapse: "collapse",
-              fontSize: 13,
-              border: "1px solid var(--border-default)",
-              borderRadius: 6,
-              overflow: "hidden",
-            }}
-          >
+        <div key={`tbl-${idx}`} className="md-table-wrap">
+          <table className="md-table">
             <thead>
-              <tr style={{ background: "var(--bg-subtle)" }}>
+              <tr>
                 {head.map((c, j) => (
                   <th
                     key={j}
-                    style={{
-                      padding: "9px 12px",
-                      textAlign: tableAlign?.[j] ?? "left",
-                      fontWeight: 700,
-                      borderBottom: "2px solid var(--border-default)",
-                      borderRight:
-                        j < head.length - 1 ? "1px solid var(--border-subtle)" : undefined,
-                    }}
+                    style={{ textAlign: align?.[j] ?? "left" }}
+                    className={j === 0 ? "md-table__th md-table__th--first" : "md-table__th"}
                   >
                     {formatInline(c)}
                   </th>
@@ -141,16 +127,12 @@ export function MarkdownPreview({ body, title, heroUrl, generatingImages = false
             </thead>
             <tbody>
               {rest.map((row, r) => (
-                <tr key={r} style={{ borderBottom: "1px solid var(--border-subtle)" }}>
+                <tr key={r} className="md-table__row">
                   {row.map((c, j) => (
                     <td
                       key={j}
-                      style={{
-                        padding: "8px 12px",
-                        textAlign: tableAlign?.[j] ?? "left",
-                        borderRight:
-                          j < row.length - 1 ? "1px solid var(--border-subtle)" : undefined,
-                      }}
+                      style={{ textAlign: align?.[j] ?? "left" }}
+                      className={j === 0 ? "md-table__td md-table__td--first" : "md-table__td"}
                     >
                       {formatInline(c)}
                     </td>
@@ -319,7 +301,88 @@ export function MarkdownPreview({ body, title, heroUrl, generatingImages = false
     )
   })
   flushAll(lines.length)
-  return <>{elements}</>
+  return (
+    <>
+      {elements}
+      <style jsx global>{`
+        .md-table-wrap {
+          margin: 18px 0;
+          overflow-x: auto;
+          border-radius: 10px;
+          border: 1px solid var(--border-default);
+          box-shadow: 0 1px 2px rgba(17, 24, 39, 0.04), 0 4px 12px rgba(17, 24, 39, 0.04);
+          background: white;
+        }
+        .md-table {
+          width: 100%;
+          border-collapse: separate;
+          border-spacing: 0;
+          font-size: 13px;
+        }
+        .md-table thead tr {
+          background: linear-gradient(180deg, #eef0ff 0%, #e0e7ff 100%);
+        }
+        .md-table__th {
+          padding: 11px 14px;
+          font-weight: 700;
+          font-size: 12px;
+          color: var(--brand-700);
+          letter-spacing: 0.02em;
+          text-transform: none;
+          border-bottom: 1.5px solid var(--brand-300);
+          border-right: 1px solid rgba(99, 102, 241, 0.18);
+          white-space: nowrap;
+        }
+        .md-table__th:last-child {
+          border-right: 0;
+        }
+        .md-table__th--first {
+          background: linear-gradient(180deg, #e0e7ff 0%, #c7d2fe 100%);
+          color: var(--brand-800, #3730a3);
+        }
+        .md-table__row {
+          transition: background 0.12s ease;
+        }
+        .md-table__row:nth-child(even) {
+          background: #fafbff;
+        }
+        .md-table__row:hover {
+          background: #eef0ff;
+        }
+        .md-table__row:last-child .md-table__td {
+          border-bottom: 0;
+        }
+        .md-table__td {
+          padding: 10px 14px;
+          color: var(--text-primary);
+          line-height: 1.55;
+          border-bottom: 1px solid var(--border-subtle);
+          border-right: 1px solid var(--border-subtle);
+          vertical-align: top;
+        }
+        .md-table__td:last-child {
+          border-right: 0;
+        }
+        .md-table__td--first {
+          font-weight: 600;
+          color: var(--text-primary);
+          background: linear-gradient(90deg, rgba(99, 102, 241, 0.06) 0%, transparent 100%);
+        }
+        .md-table__td b,
+        .md-table__td strong {
+          color: var(--brand-700);
+          font-weight: 700;
+        }
+        @media (max-width: 640px) {
+          .md-table__th,
+          .md-table__td {
+            padding: 8px 10px;
+            font-size: 12px;
+          }
+        }
+      `}</style>
+    </>
+  )
 }
 
 /* ─── 시각 요소 ─── */

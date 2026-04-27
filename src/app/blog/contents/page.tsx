@@ -129,6 +129,21 @@ export default function ContentsPage() {
 
   const currentModal = modalId ? contents.find((d) => d.id === modalId) ?? null : null
 
+  /** 콘텐츠 삭제 (soft) */
+  const handleDelete = async (id: string, title: string) => {
+    if (!confirm(`"${title.slice(0, 40)}${title.length > 40 ? "…" : ""}" 콘텐츠를 삭제할까요?\n\n(휴지통으로 이동되며 목록에서 사라집니다)`)) return
+    try {
+      const j = await safeFetchJson<{ ok: boolean; error?: string }>(
+        `/api/drafts/${id}`,
+        { method: "DELETE" }
+      )
+      if (!j.ok) throw new Error(j.error ?? "삭제 실패")
+      await load()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "삭제 실패")
+    }
+  }
+
   /** 모달에서 status/schedule 업데이트 */
   const applyPublishSetting = async (
     id: string,
@@ -321,7 +336,7 @@ export default function ContentsPage() {
                   className="content-row"
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "1fr 120px 140px 180px",
+                    gridTemplateColumns: "1fr 100px 130px 220px",
                     gap: 12,
                     alignItems: "center",
                     padding: "14px 20px",
@@ -393,6 +408,15 @@ export default function ContentsPage() {
                       title="발행 세팅"
                     >
                       <Icon name="send" size={11} /> 발행 세팅
+                    </button>
+                    <button
+                      className="bbtn bbtn--ghost bbtn--sm content-row__del"
+                      onClick={() => handleDelete(d.id, d.title)}
+                      title="삭제 (휴지통으로 이동)"
+                      aria-label="삭제"
+                      style={{ color: "var(--danger-fg)", padding: "4px 8px" }}
+                    >
+                      🗑
                     </button>
                   </div>
                 </div>

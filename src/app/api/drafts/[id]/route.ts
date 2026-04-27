@@ -96,3 +96,33 @@ export async function PATCH(
   const { data: fresh } = await db.from("drafts").select("*").eq("id", id).maybeSingle()
   return NextResponse.json({ ok: true, draft: fresh ?? data })
 }
+
+/**
+ * DELETE /api/drafts/[id]
+ * 기본은 soft delete — drafts.status = 'discarded'.
+ * 쿼리 ?hard=1 이면 row 자체 삭제 (storage 이미지·publications 등 cascade).
+ */
+export async function DELETE(
+  req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params
+  const url = new URL(req.url)
+  const hard = url.searchParams.get("hard") === "1"
+  const db = supabaseAdmin()
+
+  if (hard) {
+    const { error } = await db.from("drafts").delete().eq("id", id)
+    if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 })
+    return NextResponse.json({ ok: true, mode: "hard" })
+  }
+
+  const { data, error } = await db
+    .from("drafts")
+    .update({ status: "discarded" })
+    .eq("id", id)
+    .select()
+    .single()
+  if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 })
+  return NextResponse.json({ ok: true, mode: "soft", draft: data })
+}
