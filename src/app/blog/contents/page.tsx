@@ -615,54 +615,122 @@ function PublishSettingModal({
       role="dialog"
       aria-modal="true"
       onClick={onClose}
+      className="modal-backdrop"
       style={{
         position: "fixed",
         inset: 0,
-        background: "rgba(17, 24, 39, 0.55)",
+        background: "rgba(15, 23, 42, 0.65)",
         display: "grid",
         placeItems: "center",
         zIndex: 100,
-        backdropFilter: "blur(2px)",
+        backdropFilter: "blur(8px) saturate(140%)",
+        WebkitBackdropFilter: "blur(8px) saturate(140%)",
+        padding: 24,
+        animation: "modal-fade-in 0.18s ease-out",
       }}
     >
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
           background: "white",
-          borderRadius: "var(--r-lg)",
-          width: "min(640px, 92vw)",
-          maxHeight: "90vh",
+          borderRadius: 16,
+          width: "min(640px, 100%)",
+          maxHeight: "calc(100vh - 48px)",
           overflow: "auto",
-          boxShadow: "0 20px 50px rgba(0,0,0,0.25)",
+          boxShadow:
+            "0 1px 3px rgba(15, 23, 42, 0.1), 0 24px 60px rgba(15, 23, 42, 0.30), 0 0 0 1px rgba(15, 23, 42, 0.06)",
+          animation: "modal-pop 0.22s cubic-bezier(0.16, 1, 0.3, 1)",
         }}
       >
+        <style jsx global>{`
+          @keyframes modal-fade-in {
+            from { opacity: 0; }
+            to   { opacity: 1; }
+          }
+          @keyframes modal-pop {
+            from { opacity: 0; transform: translateY(8px) scale(0.98); }
+            to   { opacity: 1; transform: translateY(0) scale(1); }
+          }
+        `}</style>
         {/* 헤더 */}
         <div
           style={{
-            padding: "16px 20px",
-            borderBottom: "1px solid var(--border-subtle)",
+            padding: "18px 24px 14px",
             display: "flex",
-            alignItems: "center",
-            gap: 10,
+            alignItems: "flex-start",
+            gap: 12,
+            background: "linear-gradient(180deg, #fafbff 0%, #ffffff 100%)",
+            borderBottom: "1px solid #eef0ff",
           }}
         >
-          <div style={{ fontSize: 14, fontWeight: 700, flex: 1 }}>📅 발행 세팅</div>
-          <span
-            className="bchip"
-            style={{ background: st.bg, color: st.color, border: `1px solid ${st.border}` }}
-          >
-            {st.label}
-          </span>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div
+              style={{
+                fontSize: 10.5,
+                fontWeight: 700,
+                color: "var(--brand-700)",
+                letterSpacing: "0.08em",
+                textTransform: "uppercase",
+                marginBottom: 4,
+              }}
+            >
+              발행 세팅
+            </div>
+            <div
+              style={{
+                fontSize: 16,
+                fontWeight: 700,
+                lineHeight: 1.35,
+                letterSpacing: "-0.01em",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                display: "-webkit-box",
+                WebkitLineClamp: 2,
+                WebkitBoxOrient: "vertical" as const,
+              }}
+            >
+              {draft.title}
+            </div>
+            <div style={{ display: "flex", gap: 6, marginTop: 8, alignItems: "center", flexWrap: "wrap" }}>
+              <span
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 4,
+                  fontSize: 11,
+                  fontWeight: 700,
+                  padding: "3px 9px",
+                  borderRadius: 999,
+                  background: st.bg,
+                  color: st.color,
+                  border: `1px solid ${st.border}`,
+                }}
+              >
+                {st.label}
+              </span>
+              {draft.metadata?.scheduled_at && draft.status === "scheduled" && (
+                <span style={{ fontSize: 11.5, color: "#b45309", fontWeight: 600 }}>
+                  📅 {formatScheduled(draft.metadata.scheduled_at)}
+                </span>
+              )}
+            </div>
+          </div>
           <button
             onClick={onClose}
             style={{
-              background: "transparent",
+              background: "var(--bg-subtle)",
               border: 0,
-              fontSize: 18,
-              color: "var(--text-muted)",
+              width: 32,
+              height: 32,
+              borderRadius: 8,
+              fontSize: 14,
+              color: "var(--text-secondary)",
               cursor: "pointer",
-              padding: 2,
+              flexShrink: 0,
+              transition: "background 0.12s",
             }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = "#e5e7eb")}
+            onMouseLeave={(e) => (e.currentTarget.style.background = "var(--bg-subtle)")}
             aria-label="닫기"
           >
             ✕
@@ -670,51 +738,10 @@ function PublishSettingModal({
         </div>
 
         {/* 바디 */}
-        <div style={{ padding: 20, display: "flex", flexDirection: "column", gap: 16 }}>
-          <div
-            style={{
-              padding: "12px 14px",
-              background: "var(--bg-subtle)",
-              border: "1px solid var(--border-subtle)",
-              borderRadius: "var(--r-md)",
-            }}
-          >
-            <div
-              style={{
-                fontSize: 10.5,
-                fontWeight: 600,
-                color: "var(--text-muted)",
-                textTransform: "uppercase",
-                letterSpacing: ".04em",
-                marginBottom: 4,
-              }}
-            >
-              콘텐츠
-            </div>
-            <div style={{ fontSize: 13.5, fontWeight: 600, lineHeight: 1.4 }}>
-              {draft.title}
-            </div>
-            {draft.metadata?.scheduled_at && draft.status === "scheduled" && (
-              <div style={{ fontSize: 11.5, color: "#b45309", marginTop: 6, fontWeight: 600 }}>
-                📅 현재 예약: {formatScheduled(draft.metadata.scheduled_at)}
-              </div>
-            )}
-          </div>
-
+        <div style={{ padding: "20px 24px", display: "flex", flexDirection: "column", gap: 22 }}>
           {/* 모드 선택 */}
-          <div>
-            <div
-              style={{
-                fontSize: 11,
-                fontWeight: 700,
-                color: "var(--text-muted)",
-                textTransform: "uppercase",
-                letterSpacing: ".05em",
-                marginBottom: 8,
-              }}
-            >
-              발행 방식
-            </div>
+          <section>
+            <SectionLabel num="1" label="발행 방식" />
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
               <ModeCard
                 emoji="🚀"
@@ -731,86 +758,58 @@ function PublishSettingModal({
                 onClick={() => setMode("schedule")}
               />
             </div>
-          </div>
+          </section>
 
           {mode === "schedule" && (
-            <div>
-              <label
-                style={{
-                  fontSize: 11,
-                  color: "var(--text-muted)",
-                  fontWeight: 600,
-                  display: "block",
-                  marginBottom: 6,
-                  textTransform: "uppercase",
-                  letterSpacing: ".04em",
-                }}
-              >
-                발행 예정 시각
-              </label>
+            <section>
+              <SectionLabel num="2" label="발행 예정 시각" />
               <input
                 type="datetime-local"
                 value={dt}
                 onChange={(e) => setDt(e.target.value)}
                 style={{
                   width: "100%",
-                  padding: "10px 12px",
+                  padding: "11px 14px",
                   border: "1px solid var(--border-default)",
-                  borderRadius: "var(--r-md)",
-                  fontSize: 13,
+                  borderRadius: 8,
+                  fontSize: 14,
                   fontFamily: "inherit",
                   background: "white",
+                  fontWeight: 600,
+                  color: "var(--text-primary)",
                 }}
               />
-              <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 6 }}>
-                해당 시각에 아래 선택한 채널로 자동 배포됩니다.
+              <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 6 }}>
+                ⏰ 해당 시각에 아래 선택한 채널로 자동 배포됩니다.
               </div>
-            </div>
+            </section>
           )}
 
           {/* 채널 선택 그리드 */}
-          <div>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "baseline",
-                gap: 6,
-                marginBottom: 8,
-              }}
-            >
-              <span
-                style={{
-                  fontSize: 11,
-                  fontWeight: 700,
-                  color: "var(--text-muted)",
-                  textTransform: "uppercase",
-                  letterSpacing: ".05em",
-                }}
-              >
-                발행 채널
-              </span>
-              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
-                · {selectedChannels.size}개 선택
-              </span>
-              <Link
-                href="/blog/publish"
-                style={{
-                  marginLeft: "auto",
-                  fontSize: 11,
-                  color: "var(--brand-600)",
-                  fontWeight: 600,
-                }}
-              >
-                채널 ON/OFF 관리 →
-              </Link>
-            </div>
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr",
-                gap: 8,
-              }}
-            >
+          <section>
+            <SectionLabel
+              num={mode === "schedule" ? "3" : "2"}
+              label="발행 채널"
+              right={
+                <>
+                  <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 500 }}>
+                    {selectedChannels.size}개 선택
+                  </span>
+                  <Link
+                    href="/blog/publish"
+                    style={{
+                      fontSize: 11,
+                      color: "var(--brand-600)",
+                      fontWeight: 600,
+                      textDecoration: "none",
+                    }}
+                  >
+                    채널 ON/OFF →
+                  </Link>
+                </>
+              }
+            />
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
               {CHANNELS.map((c) => (
                 <ChannelCard
                   key={c.id}
@@ -823,64 +822,184 @@ function PublishSettingModal({
             {selectedChannels.size === 0 && (
               <div
                 style={{
-                  marginTop: 8,
-                  padding: "8px 10px",
+                  marginTop: 10,
+                  padding: "10px 12px",
                   background: "#fef2f2",
                   border: "1px solid #fecaca",
-                  borderRadius: "var(--r-md)",
-                  fontSize: 11.5,
+                  borderRadius: 8,
+                  fontSize: 12,
                   color: "#991b1b",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
                 }}
               >
-                ⚠️ 채널을 1개 이상 선택해야 발행할 수 있어요.
+                <span>⚠️</span>
+                <span>채널을 1개 이상 선택해야 발행할 수 있어요.</span>
               </div>
             )}
-          </div>
+          </section>
         </div>
 
         {/* 푸터 */}
         <div
           style={{
-            padding: "14px 20px",
-            borderTop: "1px solid var(--border-subtle)",
+            padding: "14px 24px",
+            borderTop: "1px solid #eef0ff",
             display: "flex",
             gap: 8,
+            alignItems: "center",
             justifyContent: "flex-end",
+            background: "#fafbff",
           }}
         >
           {draft.status === "scheduled" && (
             <button
-              className="bbtn bbtn--ghost"
+              type="button"
               onClick={() => handle("unschedule")}
               disabled={!!busy}
               title="예약 취소하고 '저장됨'으로 되돌리기"
-              style={{ marginRight: "auto" }}
+              style={{
+                marginRight: "auto",
+                background: "transparent",
+                border: "1px solid var(--border-default)",
+                padding: "8px 14px",
+                borderRadius: 8,
+                fontSize: 12.5,
+                fontWeight: 600,
+                color: "var(--text-secondary)",
+                cursor: busy ? "not-allowed" : "pointer",
+                opacity: busy ? 0.6 : 1,
+              }}
             >
               {busy === "unschedule" ? "취소 중…" : "예약 취소"}
             </button>
           )}
-          <button className="bbtn bbtn--ghost" onClick={onClose} disabled={!!busy}>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={!!busy}
+            style={{
+              background: "transparent",
+              border: 0,
+              padding: "8px 14px",
+              borderRadius: 8,
+              fontSize: 12.5,
+              fontWeight: 600,
+              color: "var(--text-secondary)",
+              cursor: busy ? "not-allowed" : "pointer",
+            }}
+          >
             닫기
           </button>
           {mode === "now" ? (
             <button
-              className="bbtn bbtn--primary"
+              type="button"
               onClick={() => handle("publishNow")}
               disabled={!!busy || selectedChannels.size === 0}
+              style={{
+                background:
+                  busy || selectedChannels.size === 0
+                    ? "#cbd5e1"
+                    : "linear-gradient(135deg, var(--brand-600) 0%, var(--brand-700) 100%)",
+                color: "white",
+                border: 0,
+                padding: "10px 18px",
+                borderRadius: 8,
+                fontSize: 13,
+                fontWeight: 700,
+                cursor: busy || selectedChannels.size === 0 ? "not-allowed" : "pointer",
+                boxShadow:
+                  busy || selectedChannels.size === 0
+                    ? "none"
+                    : "0 1px 2px rgba(99,102,241,0.2), 0 4px 12px rgba(99,102,241,0.25)",
+                transition: "all 0.12s",
+              }}
             >
               {busy === "publishNow" ? "발행 중…" : `🚀 ${selectedChannels.size}개 채널로 지금 발행`}
             </button>
           ) : (
             <button
-              className="bbtn bbtn--primary"
+              type="button"
               onClick={() => handle("schedule")}
               disabled={!!busy || !dt || selectedChannels.size === 0}
+              style={{
+                background:
+                  busy || !dt || selectedChannels.size === 0
+                    ? "#cbd5e1"
+                    : "linear-gradient(135deg, var(--brand-600) 0%, var(--brand-700) 100%)",
+                color: "white",
+                border: 0,
+                padding: "10px 18px",
+                borderRadius: 8,
+                fontSize: 13,
+                fontWeight: 700,
+                cursor: busy || !dt || selectedChannels.size === 0 ? "not-allowed" : "pointer",
+                boxShadow:
+                  busy || !dt || selectedChannels.size === 0
+                    ? "none"
+                    : "0 1px 2px rgba(99,102,241,0.2), 0 4px 12px rgba(99,102,241,0.25)",
+                transition: "all 0.12s",
+              }}
             >
               {busy === "schedule" ? "저장 중…" : `📅 ${selectedChannels.size}개 채널로 예약`}
             </button>
           )}
         </div>
       </div>
+    </div>
+  )
+}
+
+function SectionLabel({
+  num,
+  label,
+  right,
+}: {
+  num: string
+  label: string
+  right?: React.ReactNode
+}) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+        marginBottom: 10,
+      }}
+    >
+      <span
+        style={{
+          width: 20,
+          height: 20,
+          borderRadius: "50%",
+          background: "var(--brand-100)",
+          color: "var(--brand-700)",
+          fontSize: 11,
+          fontWeight: 800,
+          display: "grid",
+          placeItems: "center",
+          flexShrink: 0,
+        }}
+      >
+        {num}
+      </span>
+      <span
+        style={{
+          fontSize: 13,
+          fontWeight: 700,
+          color: "var(--text-primary)",
+          letterSpacing: "-0.01em",
+        }}
+      >
+        {label}
+      </span>
+      {right && (
+        <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
+          {right}
+        </div>
+      )}
     </div>
   )
 }
@@ -900,40 +1019,64 @@ function ChannelCard({
       onClick={onToggle}
       style={{
         textAlign: "left",
-        padding: "10px 12px",
-        borderRadius: "var(--r-md)",
+        padding: "11px 12px",
+        borderRadius: 10,
         border: `1.5px solid ${on ? "var(--brand-500)" : "var(--border-default)"}`,
         background: on ? "var(--brand-50)" : "white",
-        boxShadow: on ? "0 0 0 1px var(--brand-500) inset" : undefined,
         cursor: "pointer",
         display: "flex",
         gap: 10,
-        alignItems: "flex-start",
-        transition: "all 0.12s",
+        alignItems: "center",
+        transition: "all 0.15s ease",
+        boxShadow: on
+          ? "0 0 0 1px var(--brand-500) inset, 0 1px 2px rgba(99,102,241,0.08)"
+          : "0 1px 2px rgba(15, 23, 42, 0.03)",
+      }}
+      onMouseEnter={(e) => {
+        if (!on) e.currentTarget.style.borderColor = "var(--brand-300)"
+      }}
+      onMouseLeave={(e) => {
+        if (!on) e.currentTarget.style.borderColor = "var(--border-default)"
       }}
     >
-      <span style={{ fontSize: 18, lineHeight: 1, marginTop: 1 }}>{channel.emoji}</span>
+      <span style={{ fontSize: 22, lineHeight: 1, flexShrink: 0 }}>{channel.emoji}</span>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 1 }}>
+        <div
+          style={{
+            fontSize: 13,
+            fontWeight: 700,
+            marginBottom: 2,
+            color: on ? "var(--brand-800, #3730a3)" : "var(--text-primary)",
+            letterSpacing: "-0.01em",
+          }}
+        >
           {channel.name}
         </div>
-        <div style={{ fontSize: 10.5, color: "var(--text-muted)", lineHeight: 1.4 }}>
+        <div
+          style={{
+            fontSize: 10.5,
+            color: on ? "var(--brand-700)" : "var(--text-muted)",
+            lineHeight: 1.4,
+            opacity: on ? 0.85 : 1,
+          }}
+        >
           {channel.format}
         </div>
       </div>
       <span
         style={{
-          width: 16,
-          height: 16,
-          borderRadius: 4,
+          width: 18,
+          height: 18,
+          borderRadius: 5,
           border: `1.5px solid ${on ? "var(--brand-600)" : "var(--border-strong)"}`,
           background: on ? "var(--brand-600)" : "white",
           display: "grid",
           placeItems: "center",
           color: "white",
-          fontSize: 10,
+          fontSize: 11,
           fontWeight: 800,
           flexShrink: 0,
+          transition: "all 0.12s",
         }}
       >
         {on ? "✓" : ""}
@@ -960,22 +1103,49 @@ function ModeCard({
       type="button"
       onClick={onClick}
       style={{
-        padding: "12px 10px",
-        borderRadius: "var(--r-md)",
+        padding: "16px 12px",
+        borderRadius: 10,
         border: `1.5px solid ${on ? "var(--brand-500)" : "var(--border-default)"}`,
-        background: on ? "var(--brand-50)" : "white",
-        boxShadow: on ? "0 0 0 1px var(--brand-500) inset" : undefined,
+        background: on
+          ? "linear-gradient(180deg, var(--brand-50) 0%, white 100%)"
+          : "white",
         cursor: "pointer",
         display: "flex",
         flexDirection: "column",
-        gap: 2,
+        gap: 4,
         alignItems: "center",
-        transition: "all 0.12s",
+        transition: "all 0.15s ease",
+        boxShadow: on
+          ? "0 0 0 1px var(--brand-500) inset, 0 1px 2px rgba(99,102,241,0.1)"
+          : "0 1px 2px rgba(15, 23, 42, 0.03)",
+      }}
+      onMouseEnter={(e) => {
+        if (!on) e.currentTarget.style.borderColor = "var(--brand-300)"
+      }}
+      onMouseLeave={(e) => {
+        if (!on) e.currentTarget.style.borderColor = "var(--border-default)"
       }}
     >
-      <div style={{ fontSize: 20 }}>{emoji}</div>
-      <div style={{ fontSize: 12.5, fontWeight: 700 }}>{label}</div>
-      <div style={{ fontSize: 10.5, color: "var(--text-muted)" }}>{sub}</div>
+      <div style={{ fontSize: 24, lineHeight: 1, marginBottom: 2 }}>{emoji}</div>
+      <div
+        style={{
+          fontSize: 13.5,
+          fontWeight: 700,
+          color: on ? "var(--brand-800, #3730a3)" : "var(--text-primary)",
+          letterSpacing: "-0.01em",
+        }}
+      >
+        {label}
+      </div>
+      <div
+        style={{
+          fontSize: 11,
+          color: on ? "var(--brand-700)" : "var(--text-muted)",
+          opacity: on ? 0.85 : 1,
+        }}
+      >
+        {sub}
+      </div>
     </button>
   )
 }

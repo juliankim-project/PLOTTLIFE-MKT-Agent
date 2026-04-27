@@ -527,13 +527,14 @@ export function ImageSkeleton({
 }
 
 function detectCallout(s: string): {
-  kind: "tip" | "warn" | "info" | "ok" | "quote"
+  kind: "tip" | "warn" | "info" | "ok" | "key" | "quote"
   text: string
 } {
   if (/^(💡|\*\*(팁|Tip)\*\*|팁:)/.test(s)) return { kind: "tip", text: s.replace(/^💡\s*/, "") }
   if (/^(⚠️|❌|\*\*(주의|경고)\*\*|주의:|경고:)/.test(s)) return { kind: "warn", text: s.replace(/^⚠️\s*|^❌\s*/, "") }
   if (/^(ℹ️|\*\*정보\*\*|정보:)/.test(s)) return { kind: "info", text: s.replace(/^ℹ️\s*/, "") }
   if (/^(✅|\*\*체크\*\*|요약:)/.test(s)) return { kind: "ok", text: s.replace(/^✅\s*/, "") }
+  if (/^(📌|\*\*핵심\*\*|핵심:)/.test(s)) return { kind: "key", text: s.replace(/^📌\s*/, "") }
   return { kind: "quote", text: s }
 }
 
@@ -541,7 +542,7 @@ function Callout({
   kind,
   text,
 }: {
-  kind: "tip" | "warn" | "info" | "ok" | "quote"
+  kind: "tip" | "warn" | "info" | "ok" | "key" | "quote"
   text: string
 }) {
   const palette: Record<typeof kind, { bg: string; border: string; fg: string; icon: string }> = {
@@ -549,6 +550,7 @@ function Callout({
     warn:  { bg: "#fef2f2", border: "#fecaca", fg: "#991b1b", icon: "⚠️" },
     info:  { bg: "#eff6ff", border: "#bfdbfe", fg: "#1e40af", icon: "ℹ️" },
     ok:    { bg: "#ecfdf5", border: "#a7f3d0", fg: "#065f46", icon: "✅" },
+    key:   { bg: "#f5f3ff", border: "#ddd6fe", fg: "#5b21b6", icon: "📌" },
     quote: { bg: "#f9fafb", border: "#e5e7eb", fg: "#374151", icon: "" },
   }
   const p = palette[kind]
