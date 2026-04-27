@@ -76,3 +76,33 @@ export async function PATCH(
   if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 })
   return NextResponse.json({ ok: true, topic: data })
 }
+
+/**
+ * DELETE /api/topics/[id]
+ * 기본은 soft — topics.status = 'archived'.
+ * ?hard=1 이면 row 자체 삭제 (drafts.topic_id 는 SET NULL).
+ */
+export async function DELETE(
+  req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params
+  const url = new URL(req.url)
+  const hard = url.searchParams.get("hard") === "1"
+  const db = supabaseAdmin()
+
+  if (hard) {
+    const { error } = await db.from("topics").delete().eq("id", id)
+    if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 })
+    return NextResponse.json({ ok: true, mode: "hard" })
+  }
+
+  const { data, error } = await db
+    .from("topics")
+    .update({ status: "archived" })
+    .eq("id", id)
+    .select()
+    .single()
+  if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 })
+  return NextResponse.json({ ok: true, mode: "soft", topic: data })
+}

@@ -70,18 +70,23 @@ export default function WriteListPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState("")
-  const [filter, setFilter] = useState<"all" | "todo" | "drafting" | "ready">("all")
+  const [filter, setFilter] = useState<"all" | "todo" | "drafting" | "ready" | "trash">("all")
   const [busyId, setBusyId] = useState<string | null>(null)
+  const [trashedDrafts, setTrashedDrafts] = useState<DraftItem[]>([])
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [t, d] = await Promise.all([
-        safeFetchJson<{ ok: boolean; topics?: TopicItem[] }>("/api/topics?limit=50"),
+      const [t, d, td] = await Promise.all([
+        safeFetchJson<{ ok: boolean; topics?: TopicItem[] }>("/api/topics?limit=100"),
         safeFetchJson<{ ok: boolean; drafts?: DraftItem[] }>("/api/drafts?limit=100"),
+        safeFetchJson<{ ok: boolean; drafts?: DraftItem[] }>(
+          "/api/drafts?status=discarded&limit=100"
+        ),
       ])
       setTopics(t.topics ?? [])
       setDrafts(d.drafts ?? [])
+      setTrashedDrafts(td.drafts ?? [])
     } catch (e) {
       setError(e instanceof Error ? e.message : "오류")
     } finally {
@@ -104,8 +109,32 @@ export default function WriteListPage() {
       .map((t) => ({ topic: t, draft: draftByTopic.get(t.id) }))
   }, [topics, draftByTopic])
 
+  /* 휴지통 행: archived topics + discarded drafts (topic 정보와 함께) */
+  const trashRows = useMemo(() => {
+    const rows: Array<{ topic: TopicItem; draft?: DraftItem; kind: "topic" | "draft" }> = []
+    /* archived topics */
+    for (const t of topics) {
+      if (t.status === "archived") {
+        rows.push({ topic: t, draft: draftByTopic.get(t.id), kind: "topic" })
+      }
+    }
+    /* discarded drafts whose topic is still active (topic 자체는 휴지통 아님) */
+    for (const d of trashedDrafts) {
+      if (!d.topic_id) continue
+      const t = topics.find((x) => x.id === d.topic_id)
+      if (!t || t.status === "archived") continue
+      rows.push({ topic: t, draft: d, kind: "draft" })
+    }
+    return rows.sort((a, b) =>
+      (b.draft?.updated_at ?? b.topic.created_at).localeCompare(
+        a.draft?.updated_at ?? a.topic.created_at
+      )
+    )
+  }, [topics, trashedDrafts, draftByTopic])
+
   const visible = useMemo(() => {
-    let list = allRows
+    let list: Array<{ topic: TopicItem; draft?: DraftItem; kind?: "topic" | "draft" }> =
+      filter === "trash" ? trashRows : allRows
     if (filter === "todo") list = list.filter((r) => !r.draft)
     if (filter === "drafting")
       list = list.filter(
@@ -125,7 +154,7 @@ export default function WriteListPage() {
       list = list.filter((r) => r.topic.title.toLowerCase().includes(q))
     }
     return list
-  }, [allRows, filter, search])
+  }, [allRows, trashRows, filter, search])
 
   const counts = useMemo(() => {
     const todo = allRows.filter((r) => !r.draft).length
@@ -140,28 +169,96 @@ export default function WriteListPage() {
           r.draft.status === "published" ||
           r.draft.status === "reviewing")
     ).length
-    return { all: allRows.length, todo, drafting, ready }
-  }, [allRows])
+    return { all: allRows.length, todo, drafting, ready, trash: trashRows.length }
+  }, [allRows, trashRows])
 
-  const handleDelete = async (draftId: string, title: string) => {
-    if (
-      !confirm(
-        `"${title.slice(0, 40)}${
-          title.length > 40 ? "…" : ""
-        }" 작성된 본문을 삭제할까요?\n\n(휴지통으로 이동 — 콘텐츠 관리 → 휴지통에서 복원 가능)`
-      )
-    )
-      return
-    setBusyId(draftId)
+  const isTrashView = filter === "trash"
+
+  /** 행 단위 삭제 — draft 있으면 draft soft delete, 없으면 topic soft delete */
+  const handleDelete = async (
+    row: { topic: TopicItem; draft?: DraftItem }
+  ) => {
+    const titleClip = row.topic.title.slice(0, 40) + (row.topic.title.length > 40 ? "…" : "")
+    const msg = row.draft
+      ? `"${titleClip}" 작성된 본문을 삭제할까요?\n\n(휴지통으로 이동 — 휴지통 탭에서 복원 가능)`
+      : `"${titleClip}" 주제를 삭제할까요?\n\n(휴지통으로 이동 — 휴지통 탭에서 복원 가능)`
+    if (!confirm(msg)) return
+    const id = row.draft?.id ?? row.topic.id
+    setBusyId(id)
     try {
-      const j = await safeFetchJson<{ ok: boolean; error?: string }>(
-        `/api/drafts/${draftId}`,
-        { method: "DELETE" }
-      )
+      const url = row.draft ? `/api/drafts/${row.draft.id}` : `/api/topics/${row.topic.id}`
+      const j = await safeFetchJson<{ ok: boolean; error?: string }>(url, { method: "DELETE" })
       if (!j.ok) throw new Error(j.error ?? "삭제 실패")
       await load()
     } catch (e) {
       setError(e instanceof Error ? e.message : "삭제 실패")
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  /** 휴지통에서 복원 */
+  const handleRestore = async (row: { topic: TopicItem; draft?: DraftItem; kind?: "topic" | "draft" }) => {
+    const id = row.draft?.id ?? row.topic.id
+    setBusyId(id)
+    try {
+      if (row.kind === "draft" && row.draft) {
+        const j = await safeFetchJson<{ ok: boolean; error?: string }>(
+          `/api/drafts/${row.draft.id}`,
+          {
+            method: "PATCH",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ status: "drafting" }),
+          }
+        )
+        if (!j.ok) throw new Error(j.error ?? "복원 실패")
+      } else {
+        const j = await safeFetchJson<{ ok: boolean; error?: string }>(
+          `/api/topics/${row.topic.id}`,
+          {
+            method: "PATCH",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ status: "approved" }),
+          }
+        )
+        if (!j.ok) throw new Error(j.error ?? "복원 실패")
+      }
+      await load()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "복원 실패")
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  /** 휴지통에서 영구 삭제 */
+  const handleHardDelete = async (
+    row: { topic: TopicItem; draft?: DraftItem; kind?: "topic" | "draft" }
+  ) => {
+    const titleClip = row.topic.title.slice(0, 40) + (row.topic.title.length > 40 ? "…" : "")
+    if (
+      !confirm(`"${titleClip}" 영구 삭제할까요?\n\n⚠️ 복원할 수 없어요. 본문·이미지·관련 이력 모두 사라집니다.`)
+    )
+      return
+    const id = row.draft?.id ?? row.topic.id
+    setBusyId(id)
+    try {
+      if (row.kind === "draft" && row.draft) {
+        const j = await safeFetchJson<{ ok: boolean; error?: string }>(
+          `/api/drafts/${row.draft.id}?hard=1`,
+          { method: "DELETE" }
+        )
+        if (!j.ok) throw new Error(j.error ?? "영구삭제 실패")
+      } else {
+        const j = await safeFetchJson<{ ok: boolean; error?: string }>(
+          `/api/topics/${row.topic.id}?hard=1`,
+          { method: "DELETE" }
+        )
+        if (!j.ok) throw new Error(j.error ?? "영구삭제 실패")
+      }
+      await load()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "영구삭제 실패")
     } finally {
       setBusyId(null)
     }
@@ -231,7 +328,7 @@ export default function WriteListPage() {
             flexWrap: "wrap",
           }}
         >
-          <div style={{ display: "flex", gap: 4 }}>
+          <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
             {(
               [
                 { k: "all", l: "전체" },
@@ -261,6 +358,43 @@ export default function WriteListPage() {
                 </span>
               </button>
             ))}
+            {/* 휴지통 별도 — 시각 분리 */}
+            <span style={{ width: 1, background: "var(--border-default)", margin: "0 6px" }} />
+            <button
+              onClick={() => setFilter("trash")}
+              className={`bbtn ${filter === "trash" ? "bbtn--primary" : "bbtn--ghost"} bbtn--sm`}
+              title="삭제된 콘텐츠 (복원 가능)"
+              style={
+                filter === "trash"
+                  ? { background: "#991b1b", borderColor: "#991b1b" }
+                  : { color: counts.trash > 0 ? "#991b1b" : undefined }
+              }
+            >
+              🗑 휴지통
+              <span
+                style={{
+                  fontSize: 10.5,
+                  fontWeight: 600,
+                  padding: "1px 6px",
+                  borderRadius: 8,
+                  background:
+                    filter === "trash"
+                      ? "rgba(255,255,255,.25)"
+                      : counts.trash > 0
+                      ? "#fecaca"
+                      : "var(--bg-muted)",
+                  color:
+                    filter === "trash"
+                      ? "white"
+                      : counts.trash > 0
+                      ? "#991b1b"
+                      : "var(--text-tertiary)",
+                  marginLeft: 4,
+                }}
+              >
+                {counts.trash}
+              </span>
+            </button>
           </div>
           <input
             placeholder="🔍 제목 검색…"
@@ -301,16 +435,24 @@ export default function WriteListPage() {
               lineHeight: 1.6,
             }}
           >
-            <div style={{ fontSize: 32, marginBottom: 8, opacity: 0.5 }}>✍️</div>
-            {filter === "all"
-              ? "아직 확정된 주제가 없어요."
-              : "해당 상태의 콘텐츠가 없어요."}
-            <br />
-            먼저{" "}
-            <Link href="/blog/topics" style={{ color: "var(--brand-600)", fontWeight: 600 }}>
-              브리프 작성
-            </Link>
-            에서 브리프를 만들고 확정해주세요.
+            <div style={{ fontSize: 32, marginBottom: 8, opacity: 0.5 }}>
+              {isTrashView ? "🗑" : "✍️"}
+            </div>
+            {isTrashView ? (
+              <>휴지통이 비어있어요.</>
+            ) : (
+              <>
+                {filter === "all"
+                  ? "아직 확정된 주제가 없어요."
+                  : "해당 상태의 콘텐츠가 없어요."}
+                <br />
+                먼저{" "}
+                <Link href="/blog/topics" style={{ color: "var(--brand-600)", fontWeight: 600 }}>
+                  브리프 작성
+                </Link>
+                에서 브리프를 만들고 확정해주세요.
+              </>
+            )}
           </div>
         ) : (
           <div>
@@ -338,8 +480,18 @@ export default function WriteListPage() {
               <div style={{ textAlign: "right" }}>액션</div>
             </div>
 
-            {visible.map(({ topic: t, draft }) => {
-              const st = statusOf(t, draft)
+            {visible.map((row) => {
+              const t = row.topic
+              const draft = row.draft
+              const kind = "kind" in row ? row.kind : undefined
+              const st = isTrashView
+                ? {
+                    label: kind === "draft" ? "본문 휴지통" : "주제 휴지통",
+                    fg: "#991b1b",
+                    bg: "#fef2f2",
+                    border: "#fecaca",
+                  }
+                : statusOf(t, draft)
               const hasImg = !!(draft?.hero_image_url || draft?.metadata?.hero_image_url)
               const progress = draft?.progress_pct ?? (draft ? 100 : 0)
               return (
@@ -357,8 +509,10 @@ export default function WriteListPage() {
                 >
                   {/* 제목 */}
                   <div
-                    onClick={() => router.push(`/blog/write/${t.id}`)}
-                    style={{ cursor: "pointer", minWidth: 0 }}
+                    onClick={() => {
+                      if (!isTrashView) router.push(`/blog/write/${t.id}`)
+                    }}
+                    style={{ cursor: isTrashView ? "default" : "pointer", minWidth: 0 }}
                   >
                     <div
                       style={{
@@ -446,31 +600,61 @@ export default function WriteListPage() {
 
                   {/* 액션 */}
                   <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
-                    <Link
-                      href={`/blog/write/${t.id}`}
-                      className="bbtn bbtn--primary bbtn--sm"
-                      title={draft ? "에디터 열기" : "작성 시작"}
-                    >
-                      {draft ? (
-                        <>
-                          <Icon name="pen" size={11} /> 편집
-                        </>
-                      ) : (
-                        <>
-                          <Icon name="sparkles" size={11} /> 작성 시작
-                        </>
-                      )}
-                    </Link>
-                    {draft && (
-                      <button
-                        className="bbtn bbtn--ghost bbtn--sm"
-                        onClick={() => handleDelete(draft.id, t.title)}
-                        disabled={busyId === draft.id}
-                        title="본문 삭제 (휴지통으로 이동)"
-                        style={{ color: "var(--danger-fg)", padding: "4px 8px" }}
-                      >
-                        🗑
-                      </button>
+                    {isTrashView ? (
+                      <>
+                        <button
+                          className="bbtn bbtn--ghost bbtn--sm"
+                          onClick={() => handleRestore(row)}
+                          disabled={busyId === (draft?.id ?? t.id)}
+                          title="복원"
+                        >
+                          ↩️ 복원
+                        </button>
+                        <button
+                          className="bbtn bbtn--sm"
+                          onClick={() => handleHardDelete(row)}
+                          disabled={busyId === (draft?.id ?? t.id)}
+                          title="영구 삭제 (복원 불가)"
+                          style={{
+                            background: "#991b1b",
+                            color: "white",
+                            border: "1px solid #991b1b",
+                          }}
+                        >
+                          🔥 영구삭제
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <Link
+                          href={`/blog/write/${t.id}`}
+                          className="bbtn bbtn--primary bbtn--sm"
+                          title={draft ? "에디터 열기" : "작성 시작"}
+                        >
+                          {draft ? (
+                            <>
+                              <Icon name="pen" size={11} /> 편집
+                            </>
+                          ) : (
+                            <>
+                              <Icon name="sparkles" size={11} /> 작성 시작
+                            </>
+                          )}
+                        </Link>
+                        <button
+                          className="bbtn bbtn--ghost bbtn--sm"
+                          onClick={() => handleDelete(row)}
+                          disabled={busyId === (draft?.id ?? t.id)}
+                          title={
+                            draft
+                              ? "본문 삭제 (휴지통으로 이동)"
+                              : "주제 삭제 (휴지통으로 이동)"
+                          }
+                          style={{ color: "var(--danger-fg)", padding: "4px 8px" }}
+                        >
+                          🗑
+                        </button>
+                      </>
                     )}
                   </div>
                 </div>
