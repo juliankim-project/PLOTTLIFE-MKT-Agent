@@ -77,6 +77,8 @@ export default function ContentsPage() {
   const [filter, setFilter] = useState<StatusFilter>("all")
   const [search, setSearch] = useState("")
   const [modalId, setModalId] = useState<string | null>(null)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [bulkBusy, setBulkBusy] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -139,6 +141,59 @@ export default function ContentsPage() {
   }, [contents, trashed])
 
   const isTrashView = filter === "trash"
+
+  /* 필터 변경 시 선택 초기화 */
+  useEffect(() => {
+    setSelectedIds(new Set())
+  }, [filter])
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const n = new Set(prev)
+      if (n.has(id)) n.delete(id)
+      else n.add(id)
+      return n
+    })
+  }
+  const toggleAllVisible = () => {
+    const ids = visible.map((d) => d.id)
+    setSelectedIds((prev) => {
+      const allSelected = ids.every((id) => prev.has(id))
+      if (allSelected) {
+        const n = new Set(prev)
+        ids.forEach((id) => n.delete(id))
+        return n
+      }
+      const n = new Set(prev)
+      ids.forEach((id) => n.add(id))
+      return n
+    })
+  }
+
+  /** 다중 선택 휴지통 이동 (또는 휴지통 뷰에선 영구삭제) */
+  const handleBulkAction = async () => {
+    if (selectedIds.size === 0) return
+    const action = isTrashView ? "영구삭제" : "휴지통 이동"
+    const warn = isTrashView
+      ? `선택한 ${selectedIds.size}개를 영구 삭제할까요?\n\n⚠️ 복원할 수 없어요.`
+      : `선택한 ${selectedIds.size}개를 휴지통으로 보낼까요?\n\n(휴지통 탭에서 복원할 수 있어요)`
+    if (!confirm(warn)) return
+    setBulkBusy(true)
+    try {
+      const ids = Array.from(selectedIds)
+      await Promise.all(
+        ids.map((id) =>
+          fetch(`/api/drafts/${id}${isTrashView ? "?hard=1" : ""}`, { method: "DELETE" })
+        )
+      )
+      setSelectedIds(new Set())
+      await load()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : `${action} 실패`)
+    } finally {
+      setBulkBusy(false)
+    }
+  }
 
   const currentModal = modalId ? contents.find((d) => d.id === modalId) ?? null : null
 
@@ -384,6 +439,80 @@ export default function ContentsPage() {
           </div>
         </div>
 
+        {/* 다중 선택 액션바 */}
+        {selectedIds.size > 0 && (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 12,
+              padding: "10px 20px",
+              background: isTrashView ? "#fef2f2" : "var(--brand-50)",
+              borderBottom: `1px solid ${isTrashView ? "#fecaca" : "var(--brand-200)"}`,
+              fontSize: 12.5,
+            }}
+          >
+            <span style={{ fontWeight: 700, color: isTrashView ? "#991b1b" : "var(--brand-700)" }}>
+              ✓ {selectedIds.size}개 선택됨
+            </span>
+            <button
+              className="bbtn bbtn--ghost bbtn--sm"
+              onClick={() => setSelectedIds(new Set())}
+              style={{ marginLeft: "auto" }}
+            >
+              선택 해제
+            </button>
+            <button
+              className="bbtn bbtn--sm"
+              onClick={handleBulkAction}
+              disabled={bulkBusy}
+              style={{ background: "#991b1b", color: "white", border: "1px solid #991b1b" }}
+            >
+              {bulkBusy
+                ? "처리 중…"
+                : isTrashView
+                ? `🔥 영구삭제 (${selectedIds.size})`
+                : `🗑 휴지통으로 (${selectedIds.size})`}
+            </button>
+          </div>
+        )}
+
+        {/* 헤더 (체크박스용) */}
+        {visible.length > 0 && (
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "32px 1fr 100px 130px 220px",
+              gap: 12,
+              alignItems: "center",
+              padding: "8px 20px",
+              fontSize: 11,
+              fontWeight: 700,
+              color: "var(--text-muted)",
+              background: "var(--bg-subtle)",
+              borderBottom: "1px solid var(--border-default)",
+              textTransform: "uppercase",
+              letterSpacing: ".04em",
+            }}
+          >
+            <div style={{ textAlign: "center" }}>
+              <input
+                type="checkbox"
+                checked={
+                  visible.length > 0 && visible.every((d) => selectedIds.has(d.id))
+                }
+                onChange={toggleAllVisible}
+                style={{ accentColor: "var(--brand-600)", cursor: "pointer" }}
+                aria-label="전체 선택"
+              />
+            </div>
+            <div>제목</div>
+            <div>상태</div>
+            <div>업데이트</div>
+            <div style={{ textAlign: "right" }}>액션</div>
+          </div>
+        )}
+
         {visible.length === 0 && !loading ? (
           <div
             style={{
@@ -418,19 +547,30 @@ export default function ContentsPage() {
             {visible.map((d) => {
               const st = STATUS_LABEL[d.status] ?? STATUS_LABEL.approved
               const scheduled = d.metadata?.scheduled_at
+              const checked = selectedIds.has(d.id)
               return (
                 <div
                   key={d.id}
                   className="content-row"
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "1fr 100px 130px 220px",
+                    gridTemplateColumns: "32px 1fr 100px 130px 220px",
                     gap: 12,
                     alignItems: "center",
                     padding: "14px 20px",
                     borderBottom: "1px solid var(--border-subtle)",
+                    background: checked ? "var(--brand-50)" : undefined,
                   }}
                 >
+                  <div style={{ textAlign: "center" }}>
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => toggleSelect(d.id)}
+                      style={{ accentColor: "var(--brand-600)", cursor: "pointer" }}
+                      aria-label={`${d.title} 선택`}
+                    />
+                  </div>
                   <div
                     onClick={() => {
                       if (!isTrashView) router.push(`/blog/contents/${d.id}`)
