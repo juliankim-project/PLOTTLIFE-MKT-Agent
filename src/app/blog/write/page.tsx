@@ -72,7 +72,9 @@ export default function WriteListPage() {
   const [search, setSearch] = useState("")
   const [filter, setFilter] = useState<"all" | "todo" | "drafting" | "ready" | "trash">("all")
   const [busyId, setBusyId] = useState<string | null>(null)
+  const [bulkBusy, setBulkBusy] = useState(false)
   const [trashedDrafts, setTrashedDrafts] = useState<DraftItem[]>([])
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set())
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -173,6 +175,72 @@ export default function WriteListPage() {
   }, [allRows, trashRows])
 
   const isTrashView = filter === "trash"
+
+  /* 선택 관리 — 필터 바뀌면 초기화 */
+  useEffect(() => {
+    setSelectedKeys(new Set())
+  }, [filter])
+
+  const toggleSelect = (id: string) => {
+    setSelectedKeys((prev) => {
+      const n = new Set(prev)
+      if (n.has(id)) n.delete(id)
+      else n.add(id)
+      return n
+    })
+  }
+  const toggleAllVisible = () => {
+    const ids = visible.map((r) => r.topic.id)
+    setSelectedKeys((prev) => {
+      const allSelected = ids.every((id) => prev.has(id))
+      if (allSelected) {
+        const n = new Set(prev)
+        ids.forEach((id) => n.delete(id))
+        return n
+      }
+      const n = new Set(prev)
+      ids.forEach((id) => n.add(id))
+      return n
+    })
+  }
+
+  /* 본문 이미지 카운트 */
+  const countBodyImages = (md?: string | null): number => {
+    if (!md) return 0
+    const m = md.match(/!\[[^\]]*\]\(https?:\/\/[^)]+\)/g)
+    return m?.length ?? 0
+  }
+
+  /* 다중 선택 휴지통 이동 */
+  const handleBulkDelete = async () => {
+    if (selectedKeys.size === 0) return
+    if (
+      !confirm(
+        `선택한 ${selectedKeys.size}개를 휴지통으로 보낼까요?\n\n(휴지통 탭에서 복원할 수 있어요)`
+      )
+    )
+      return
+    setBulkBusy(true)
+    try {
+      const ids = Array.from(selectedKeys)
+      await Promise.all(
+        ids.map(async (topicId) => {
+          const row = allRows.find((r) => r.topic.id === topicId)
+          if (!row) return
+          const url = row.draft
+            ? `/api/drafts/${row.draft.id}`
+            : `/api/topics/${row.topic.id}`
+          await fetch(url, { method: "DELETE" })
+        })
+      )
+      setSelectedKeys(new Set())
+      await load()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "일괄 삭제 실패")
+    } finally {
+      setBulkBusy(false)
+    }
+  }
 
   /** 행 단위 삭제 — draft 있으면 draft soft delete, 없으면 topic soft delete */
   const handleDelete = async (
@@ -456,11 +524,47 @@ export default function WriteListPage() {
           </div>
         ) : (
           <div>
+            {/* 다중 선택 액션바 */}
+            {!isTrashView && selectedKeys.size > 0 && (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 12,
+                  padding: "10px 20px",
+                  background: "var(--brand-50)",
+                  borderBottom: "1px solid var(--brand-200)",
+                  fontSize: 12.5,
+                }}
+              >
+                <span style={{ fontWeight: 700, color: "var(--brand-700)" }}>
+                  ✓ {selectedKeys.size}개 선택됨
+                </span>
+                <button
+                  className="bbtn bbtn--ghost bbtn--sm"
+                  onClick={() => setSelectedKeys(new Set())}
+                  style={{ marginLeft: "auto" }}
+                >
+                  선택 해제
+                </button>
+                <button
+                  className="bbtn bbtn--sm"
+                  onClick={handleBulkDelete}
+                  disabled={bulkBusy}
+                  style={{ background: "#991b1b", color: "white", border: "1px solid #991b1b" }}
+                >
+                  {bulkBusy ? "이동 중…" : `🗑 휴지통으로 (${selectedKeys.size})`}
+                </button>
+              </div>
+            )}
+
             {/* 헤더 */}
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "1fr 130px 90px 90px 200px",
+                gridTemplateColumns: isTrashView
+                  ? "1fr 130px 70px 80px 80px 200px"
+                  : "32px 1fr 130px 70px 80px 80px 180px",
                 gap: 12,
                 alignItems: "center",
                 padding: "10px 20px",
@@ -473,9 +577,24 @@ export default function WriteListPage() {
                 letterSpacing: ".04em",
               }}
             >
+              {!isTrashView && (
+                <div style={{ textAlign: "center" }}>
+                  <input
+                    type="checkbox"
+                    checked={
+                      visible.length > 0 &&
+                      visible.every((r) => selectedKeys.has(r.topic.id))
+                    }
+                    onChange={toggleAllVisible}
+                    style={{ accentColor: "var(--brand-600)", cursor: "pointer" }}
+                    aria-label="전체 선택"
+                  />
+                </div>
+              )}
               <div>제목</div>
               <div>상태</div>
-              <div style={{ textAlign: "center" }}>이미지</div>
+              <div style={{ textAlign: "center" }}>썸네일</div>
+              <div style={{ textAlign: "center" }}>본문 이미지</div>
               <div style={{ textAlign: "center" }}>진행률</div>
               <div style={{ textAlign: "right" }}>액션</div>
             </div>
@@ -492,21 +611,37 @@ export default function WriteListPage() {
                     border: "#fecaca",
                   }
                 : statusOf(t, draft)
-              const hasImg = !!(draft?.hero_image_url || draft?.metadata?.hero_image_url)
+              const hasThumb = !!(draft?.hero_image_url || draft?.metadata?.hero_image_url)
+              const bodyImgs = countBodyImages(draft?.body_markdown)
               const progress = draft?.progress_pct ?? (draft ? 100 : 0)
+              const checked = selectedKeys.has(t.id)
               return (
                 <div
                   key={t.id}
                   className="write-row"
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "1fr 130px 90px 90px 200px",
+                    gridTemplateColumns: isTrashView
+                      ? "1fr 130px 70px 80px 80px 200px"
+                      : "32px 1fr 130px 70px 80px 80px 180px",
                     gap: 12,
                     alignItems: "center",
                     padding: "14px 20px",
                     borderBottom: "1px solid var(--border-subtle)",
+                    background: checked ? "var(--brand-50)" : undefined,
                   }}
                 >
+                  {!isTrashView && (
+                    <div style={{ textAlign: "center" }}>
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => toggleSelect(t.id)}
+                        style={{ accentColor: "var(--brand-600)", cursor: "pointer" }}
+                        aria-label={`${t.title} 선택`}
+                      />
+                    </div>
+                  )}
                   {/* 제목 */}
                   <div
                     onClick={() => {
@@ -563,13 +698,30 @@ export default function WriteListPage() {
                     {st.label}
                   </span>
 
-                  {/* 이미지 */}
-                  <div style={{ textAlign: "center", fontSize: 18 }}>
-                    {hasImg ? (
-                      <span title="썸네일·이미지 있음">🖼</span>
-                    ) : (
-                      <span style={{ color: "var(--text-muted)", fontSize: 12 }}>—</span>
-                    )}
+                  {/* 썸네일 */}
+                  <div
+                    style={{
+                      textAlign: "center",
+                      fontSize: 13,
+                      fontWeight: 700,
+                      color: hasThumb ? "var(--brand-700)" : "var(--text-muted)",
+                    }}
+                    title={hasThumb ? "썸네일 1개" : "없음"}
+                  >
+                    {hasThumb ? "1" : "—"}
+                  </div>
+
+                  {/* 본문 이미지 */}
+                  <div
+                    style={{
+                      textAlign: "center",
+                      fontSize: 13,
+                      fontWeight: 700,
+                      color: bodyImgs > 0 ? "var(--brand-700)" : "var(--text-muted)",
+                    }}
+                    title={bodyImgs > 0 ? `본문 이미지 ${bodyImgs}개` : "없음"}
+                  >
+                    {bodyImgs > 0 ? bodyImgs : "—"}
                   </div>
 
                   {/* 진행률 */}
