@@ -50,6 +50,13 @@ const Icon = {
       <path d="M9 13h6" /><path d="M9 17h6" />
     </svg>
   ),
+  insta: (
+    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2" y="2" width="20" height="20" rx="5" />
+      <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z" />
+      <line x1="17.5" y1="6.5" x2="17.51" y2="6.5" />
+    </svg>
+  ),
   chevron: (
     <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="m9 18 6-6-6-6" />
@@ -76,6 +83,24 @@ const navItems: NavItem[] = [
       { kind: "leaf", label: "06 · 콘텐츠 관리", href: "/blog/contents" },
       { kind: "leaf", label: "07 · 발행관리", href: "/blog/publish" },
       { kind: "leaf", label: "08 · 성과분석", href: "/blog/analyze" },
+    ],
+  },
+  {
+    kind: "group",
+    label: "인스타 파이프라인",
+    href: "/insta",
+    icon: Icon.insta,
+    match: (p) => p.startsWith("/insta"),
+    items: [
+      { kind: "leaf", label: "여정 맵", href: "/insta" },
+      { kind: "leaf", label: "01 · 트렌드·해시태그", href: "/insta/trends" },
+      { kind: "leaf", label: "02 · 포스트 아이데이션", href: "/insta/ideation" },
+      { kind: "leaf", label: "03 · 포스트 브리프", href: "/insta/topics" },
+      { kind: "leaf", label: "04 · 카드 제작", href: "/insta/posts" },
+      { kind: "leaf", label: "05 · 검수", href: "/insta/review" },
+      { kind: "leaf", label: "06 · 콘텐츠 관리", href: "/insta/contents" },
+      { kind: "leaf", label: "07 · 발행관리", href: "/insta/publish" },
+      { kind: "leaf", label: "08 · 성과분석", href: "/insta/analyze" },
     ],
   },
 ]
