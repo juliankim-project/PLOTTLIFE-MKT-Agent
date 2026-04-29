@@ -19,6 +19,7 @@
     "google-trends-api": "^4.9.2",
     "lightningcss": "^1.32.0",
     "lucide-react": "^1.8.0",
+    "marked": "^18.0.2",
     "next": "16.2.3",
     "openai": "^6.34.0",
     "pg": "^8.20.0",

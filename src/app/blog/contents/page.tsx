@@ -4,8 +4,9 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { Icon, PageHeader } from "../_ui"
-import { CHANNELS, type PublishChannel } from "../_lib/channels"
 import { readCache, writeCache } from "../_lib/cache"
+import { PublishSettingModal } from "./_components/publish-modal"
+import { pickDabCategory } from "@/lib/dab/category"
 
 interface DraftItem {
   id: string
@@ -14,6 +15,9 @@ interface DraftItem {
   status: string
   progress_pct: number | null
   primary_keyword: string | null
+  secondary_keywords?: string[] | null
+  body_markdown?: string | null
+  hero_image_url?: string | null
   target_kpi: string | null
   metadata: {
     scheduled_at?: string | null
@@ -21,6 +25,11 @@ interface DraftItem {
     provider?: string
     model?: string
     channels?: string[]
+    /* 대브 어드민 등록 상태 — Phase 5 */
+    dab_blog_id?: number
+    dab_status?: "DRAFT" | "PUBLISHED"
+    dab_category?: string
+    dab_registered_at?: string
   } | null
   created_at: string
   updated_at: string
@@ -38,6 +47,19 @@ const STATUS_LABEL: Record<string, { label: string; color: string; bg: string; b
   discarded: { label: "휴지통",   color: "#991b1b", bg: "#fef2f2", border: "#fecaca" },
 }
 
+/** 대브 어드민 등록 상태 (drafts.metadata.dab_status 기준) — 콘텐츠 매니저 양식과 통일 */
+const DAB_STATUS_LABEL: Record<"none" | "DRAFT" | "PUBLISHED", { label: string; color: string; bg: string; border: string }> = {
+  none:       { label: "미등록",   color: "#6b7280", bg: "#f3f4f6", border: "#e5e7eb" },
+  DRAFT:      { label: "임시저장", color: "#6b7280", bg: "#ffffff", border: "#cbd5e1" },
+  PUBLISHED:  { label: "게시 중",  color: "#047857", bg: "#d1fae5", border: "#a7f3d0" },
+}
+
+function getDabStatus(d: DraftItem): "none" | "DRAFT" | "PUBLISHED" {
+  if (d.metadata?.dab_status === "PUBLISHED") return "PUBLISHED"
+  if (d.metadata?.dab_status === "DRAFT") return "DRAFT"
+  return "none"
+}
+
 async function safeFetchJson<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
   const r = await fetch(input, init)
   const text = await r.text()
@@ -45,27 +67,6 @@ async function safeFetchJson<T>(input: RequestInfo, init?: RequestInit): Promise
     return JSON.parse(text) as T
   } catch {
     throw new Error(r.ok ? "응답 파싱 실패" : `HTTP ${r.status}`)
-  }
-}
-
-/** 현재 로컬 시각을 datetime-local input 형식으로 (+1시간 기본) */
-function defaultScheduledInput(): string {
-  const d = new Date(Date.now() + 60 * 60 * 1000)
-  const pad = (n: number) => String(n).padStart(2, "0")
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
-}
-
-function formatScheduled(iso?: string | null): string {
-  if (!iso) return ""
-  try {
-    return new Date(iso).toLocaleString("ko-KR", {
-      month: "numeric",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    })
-  } catch {
-    return ""
   }
 }
 
@@ -283,42 +284,7 @@ export default function ContentsPage() {
     }
   }
 
-  /** 모달에서 status/schedule/channels 업데이트 */
-  const applyPublishSetting = async (
-    id: string,
-    action: "save" | "schedule" | "publishNow" | "unschedule",
-    opts: { scheduledAt?: string; channels?: string[] } = {}
-  ) => {
-    try {
-      const body: Record<string, unknown> = {}
-      if (action === "save") {
-        body.status = "approved"
-        body.scheduledAt = null
-      } else if (action === "schedule") {
-        body.status = "scheduled"
-        if (opts.scheduledAt) body.scheduledAt = new Date(opts.scheduledAt).toISOString()
-      } else if (action === "publishNow") {
-        body.status = "published"
-      } else if (action === "unschedule") {
-        body.status = "approved"
-        body.scheduledAt = null
-      }
-      if (opts.channels) body.channels = opts.channels
-      const j = await safeFetchJson<{ ok: boolean; error?: string }>(
-        `/api/drafts/${id}`,
-        {
-          method: "PATCH",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify(body),
-        }
-      )
-      if (!j.ok) throw new Error(j.error ?? "저장 실패")
-      setModalId(null)
-      await load()
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "저장 실패")
-    }
-  }
+  /* applyPublishSetting 은 옛 채널 그리드 모달용 — 새 모달은 다음 PR 에서 어드민 API 호출 연결 */
 
   return (
     <div className="bpage fade-up">
@@ -520,7 +486,7 @@ export default function ContentsPage() {
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "32px 1fr 100px 130px 220px",
+              gridTemplateColumns: "32px 60px 1fr 110px 100px 110px 220px",
               gap: 12,
               alignItems: "center",
               padding: "8px 20px",
@@ -544,7 +510,9 @@ export default function ContentsPage() {
                 aria-label="전체 선택"
               />
             </div>
-            <div>제목</div>
+            <div>썸네일</div>
+            <div>제목 / 작성자</div>
+            <div>카테고리</div>
             <div>상태</div>
             <div>업데이트</div>
             <div style={{ textAlign: "right" }}>액션</div>
@@ -583,8 +551,13 @@ export default function ContentsPage() {
         ) : (
           <div>
             {visible.map((d) => {
-              const st = STATUS_LABEL[d.status] ?? STATUS_LABEL.approved
-              const scheduled = d.metadata?.scheduled_at
+              const dabStatus = getDabStatus(d)
+              const dabSt = DAB_STATUS_LABEL[dabStatus]
+              const dabCategory = d.metadata?.dab_category ?? pickDabCategory({
+                title: d.title,
+                primaryKeyword: d.primary_keyword,
+                secondaryKeywords: d.secondary_keywords,
+              })
               const checked = selectedIds.has(d.id)
               return (
                 <div
@@ -592,12 +565,13 @@ export default function ContentsPage() {
                   className="content-row"
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "32px 1fr 100px 130px 220px",
+                    gridTemplateColumns: "32px 60px 1fr 110px 100px 110px 220px",
                     gap: 12,
                     alignItems: "center",
-                    padding: "14px 20px",
+                    padding: "12px 20px",
                     borderBottom: "1px solid var(--border-subtle)",
                     background: checked ? "var(--brand-50)" : undefined,
+                    opacity: dabStatus === "DRAFT" ? 0.85 : 1,
                   }}
                 >
                   <div style={{ textAlign: "center" }}>
@@ -609,6 +583,39 @@ export default function ContentsPage() {
                       aria-label={`${d.title} 선택`}
                     />
                   </div>
+                  {/* 썸네일 */}
+                  <div>
+                    {d.hero_image_url ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={d.hero_image_url}
+                        alt=""
+                        style={{
+                          width: 48,
+                          height: 32,
+                          objectFit: "cover",
+                          borderRadius: 4,
+                          display: "block",
+                        }}
+                      />
+                    ) : (
+                      <div
+                        style={{
+                          width: 48,
+                          height: 32,
+                          background: "var(--bg-muted)",
+                          borderRadius: 4,
+                          display: "grid",
+                          placeItems: "center",
+                          color: "var(--text-muted)",
+                          fontSize: 14,
+                        }}
+                      >
+                        📄
+                      </div>
+                    )}
+                  </div>
+                  {/* 제목 / 작성자 */}
                   <div
                     onClick={() => {
                       if (!isTrashView) router.push(`/blog/contents/${d.id}`)
@@ -627,40 +634,56 @@ export default function ContentsPage() {
                     >
                       {d.title}
                     </div>
-                    {d.primary_keyword && (
-                      <div
-                        style={{
-                          fontSize: 11,
-                          color: "var(--text-muted)",
-                          marginTop: 2,
-                        }}
-                      >
-                        🎯 {d.primary_keyword}
-                      </div>
-                    )}
+                    <div
+                      style={{
+                        fontSize: 10.5,
+                        color: "var(--text-muted)",
+                        marginTop: 2,
+                      }}
+                    >
+                      플라트라이프 에디터
+                      {d.primary_keyword && (
+                        <span style={{ marginLeft: 6 }}>· 🎯 {d.primary_keyword}</span>
+                      )}
+                    </div>
                   </div>
+                  {/* 카테고리 */}
                   <span
-                    className="bchip"
                     style={{
-                      background: st.bg,
-                      color: st.color,
-                      border: `1px solid ${st.border}`,
                       fontSize: 10.5,
+                      padding: "3px 10px",
+                      borderRadius: 4,
+                      background: "#f3f4f6",
+                      color: "var(--text-secondary)",
                       fontWeight: 600,
                       justifySelf: "start",
                     }}
                   >
-                    {st.label}
+                    {dabCategory}
                   </span>
+                  {/* 상태 (대브 등록 상태 기준) */}
+                  <span
+                    style={{
+                      background: dabSt.bg,
+                      color: dabSt.color,
+                      border: `1px solid ${dabSt.border}`,
+                      fontSize: 10.5,
+                      fontWeight: 700,
+                      padding: "3px 9px",
+                      borderRadius: 999,
+                      justifySelf: "start",
+                    }}
+                  >
+                    {dabStatus === "PUBLISHED" ? "🟢 " : ""}{dabSt.label}
+                  </span>
+                  {/* 업데이트 */}
                   <span style={{ fontSize: 11.5, color: "var(--text-muted)" }}>
-                    {scheduled
-                      ? `📅 ${formatScheduled(scheduled)}`
-                      : new Date(d.updated_at).toLocaleDateString("ko-KR", {
-                          month: "numeric",
-                          day: "numeric",
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
+                    {new Date(d.updated_at).toLocaleDateString("ko-KR", {
+                      month: "numeric",
+                      day: "numeric",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
                   </span>
                   <div style={{ display: "flex", gap: 6, justifySelf: "end" }}>
                     {isTrashView ? (
@@ -720,12 +743,12 @@ export default function ContentsPage() {
         )}
       </div>
 
-      {/* 발행 세팅 모달 */}
+      {/* 발행 세팅 모달 — 플라트라이프 어드민 단일 채널 */}
       {currentModal && (
         <PublishSettingModal
           draft={currentModal}
           onClose={() => setModalId(null)}
-          onApply={applyPublishSetting}
+          /* onSubmit 은 다음 PR 에서 실제 어드민 API 호출 연결 */
         />
       )}
 
@@ -738,595 +761,6 @@ export default function ContentsPage() {
   )
 }
 
-function PublishSettingModal({
-  draft,
-  onClose,
-  onApply,
-}: {
-  draft: DraftItem
-  onClose: () => void
-  onApply: (
-    id: string,
-    action: "save" | "schedule" | "publishNow" | "unschedule",
-    opts?: { scheduledAt?: string; channels?: string[] }
-  ) => Promise<void>
-}) {
-  const [mode, setMode] = useState<"now" | "schedule">(
-    draft.status === "scheduled" ? "schedule" : "now"
-  )
-  const [dt, setDt] = useState<string>(
-    draft.metadata?.scheduled_at
-      ? draft.metadata.scheduled_at.slice(0, 16)
-      : defaultScheduledInput()
-  )
-  /* 채널 선택 — draft.metadata.channels 가 있으면 그걸로, 없으면 defaultEnabled 채널 자동 체크 */
-  const [selectedChannels, setSelectedChannels] = useState<Set<string>>(() => {
-    if (draft.metadata?.channels && draft.metadata.channels.length > 0) {
-      return new Set(draft.metadata.channels)
-    }
-    return new Set(CHANNELS.filter((c) => c.defaultEnabled).map((c) => c.id))
-  })
-  const [busy, setBusy] = useState<false | "publishNow" | "schedule" | "unschedule">(false)
-
-  const st = STATUS_LABEL[draft.status] ?? STATUS_LABEL.approved
-
-  const toggleChannel = (id: string) => {
-    setSelectedChannels((prev) => {
-      const n = new Set(prev)
-      if (n.has(id)) n.delete(id)
-      else n.add(id)
-      return n
-    })
-  }
-
-  const handle = async (action: "publishNow" | "schedule" | "unschedule") => {
-    setBusy(action)
-    await onApply(draft.id, action, {
-      scheduledAt: action === "schedule" ? dt : undefined,
-      channels: Array.from(selectedChannels),
-    })
-    setBusy(false)
-  }
-
-  return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      onClick={onClose}
-      className="modal-backdrop"
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(15, 23, 42, 0.65)",
-        display: "grid",
-        placeItems: "center",
-        zIndex: 100,
-        backdropFilter: "blur(8px) saturate(140%)",
-        WebkitBackdropFilter: "blur(8px) saturate(140%)",
-        padding: 24,
-        animation: "modal-fade-in 0.18s ease-out",
-      }}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          background: "white",
-          borderRadius: 16,
-          width: "min(640px, 100%)",
-          maxHeight: "calc(100vh - 48px)",
-          overflow: "auto",
-          boxShadow:
-            "0 1px 3px rgba(15, 23, 42, 0.1), 0 24px 60px rgba(15, 23, 42, 0.30), 0 0 0 1px rgba(15, 23, 42, 0.06)",
-          animation: "modal-pop 0.22s cubic-bezier(0.16, 1, 0.3, 1)",
-        }}
-      >
-        <style jsx global>{`
-          @keyframes modal-fade-in {
-            from { opacity: 0; }
-            to   { opacity: 1; }
-          }
-          @keyframes modal-pop {
-            from { opacity: 0; transform: translateY(8px) scale(0.98); }
-            to   { opacity: 1; transform: translateY(0) scale(1); }
-          }
-        `}</style>
-        {/* 헤더 */}
-        <div
-          style={{
-            padding: "18px 24px 14px",
-            display: "flex",
-            alignItems: "flex-start",
-            gap: 12,
-            background: "linear-gradient(180deg, #fafbff 0%, #ffffff 100%)",
-            borderBottom: "1px solid #eef0ff",
-          }}
-        >
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div
-              style={{
-                fontSize: 10.5,
-                fontWeight: 700,
-                color: "var(--brand-700)",
-                letterSpacing: "0.08em",
-                textTransform: "uppercase",
-                marginBottom: 4,
-              }}
-            >
-              발행 세팅
-            </div>
-            <div
-              style={{
-                fontSize: 16,
-                fontWeight: 700,
-                lineHeight: 1.35,
-                letterSpacing: "-0.01em",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                display: "-webkit-box",
-                WebkitLineClamp: 2,
-                WebkitBoxOrient: "vertical" as const,
-              }}
-            >
-              {draft.title}
-            </div>
-            <div style={{ display: "flex", gap: 6, marginTop: 8, alignItems: "center", flexWrap: "wrap" }}>
-              <span
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 4,
-                  fontSize: 11,
-                  fontWeight: 700,
-                  padding: "3px 9px",
-                  borderRadius: 999,
-                  background: st.bg,
-                  color: st.color,
-                  border: `1px solid ${st.border}`,
-                }}
-              >
-                {st.label}
-              </span>
-              {draft.metadata?.scheduled_at && draft.status === "scheduled" && (
-                <span style={{ fontSize: 11.5, color: "#b45309", fontWeight: 600 }}>
-                  📅 {formatScheduled(draft.metadata.scheduled_at)}
-                </span>
-              )}
-            </div>
-          </div>
-          <button
-            onClick={onClose}
-            style={{
-              background: "var(--bg-subtle)",
-              border: 0,
-              width: 32,
-              height: 32,
-              borderRadius: 8,
-              fontSize: 14,
-              color: "var(--text-secondary)",
-              cursor: "pointer",
-              flexShrink: 0,
-              transition: "background 0.12s",
-            }}
-            onMouseEnter={(e) => (e.currentTarget.style.background = "#e5e7eb")}
-            onMouseLeave={(e) => (e.currentTarget.style.background = "var(--bg-subtle)")}
-            aria-label="닫기"
-          >
-            ✕
-          </button>
-        </div>
-
-        {/* 바디 */}
-        <div style={{ padding: "20px 24px", display: "flex", flexDirection: "column", gap: 22 }}>
-          {/* 모드 선택 */}
-          <section>
-            <SectionLabel num="1" label="발행 방식" />
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-              <ModeCard
-                emoji="🚀"
-                label="지금 발행"
-                sub="즉시 발행완료로"
-                on={mode === "now"}
-                onClick={() => setMode("now")}
-              />
-              <ModeCard
-                emoji="📅"
-                label="예약 발행"
-                sub="특정 시각에 자동"
-                on={mode === "schedule"}
-                onClick={() => setMode("schedule")}
-              />
-            </div>
-          </section>
-
-          {mode === "schedule" && (
-            <section>
-              <SectionLabel num="2" label="발행 예정 시각" />
-              <input
-                type="datetime-local"
-                value={dt}
-                onChange={(e) => setDt(e.target.value)}
-                style={{
-                  width: "100%",
-                  padding: "11px 14px",
-                  border: "1px solid var(--border-default)",
-                  borderRadius: 8,
-                  fontSize: 14,
-                  fontFamily: "inherit",
-                  background: "white",
-                  fontWeight: 600,
-                  color: "var(--text-primary)",
-                }}
-              />
-              <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 6 }}>
-                ⏰ 해당 시각에 아래 선택한 채널로 자동 배포됩니다.
-              </div>
-            </section>
-          )}
-
-          {/* 채널 선택 그리드 */}
-          <section>
-            <SectionLabel
-              num={mode === "schedule" ? "3" : "2"}
-              label="발행 채널"
-              right={
-                <>
-                  <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 500 }}>
-                    {selectedChannels.size}개 선택
-                  </span>
-                  <Link
-                    href="/blog/publish"
-                    style={{
-                      fontSize: 11,
-                      color: "var(--brand-600)",
-                      fontWeight: 600,
-                      textDecoration: "none",
-                    }}
-                  >
-                    채널 ON/OFF →
-                  </Link>
-                </>
-              }
-            />
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-              {CHANNELS.map((c) => (
-                <ChannelCard
-                  key={c.id}
-                  channel={c}
-                  on={selectedChannels.has(c.id)}
-                  onToggle={() => toggleChannel(c.id)}
-                />
-              ))}
-            </div>
-            {selectedChannels.size === 0 && (
-              <div
-                style={{
-                  marginTop: 10,
-                  padding: "10px 12px",
-                  background: "#fef2f2",
-                  border: "1px solid #fecaca",
-                  borderRadius: 8,
-                  fontSize: 12,
-                  color: "#991b1b",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 8,
-                }}
-              >
-                <span>⚠️</span>
-                <span>채널을 1개 이상 선택해야 발행할 수 있어요.</span>
-              </div>
-            )}
-          </section>
-        </div>
-
-        {/* 푸터 */}
-        <div
-          style={{
-            padding: "14px 24px",
-            borderTop: "1px solid #eef0ff",
-            display: "flex",
-            gap: 8,
-            alignItems: "center",
-            justifyContent: "flex-end",
-            background: "#fafbff",
-          }}
-        >
-          {draft.status === "scheduled" && (
-            <button
-              type="button"
-              onClick={() => handle("unschedule")}
-              disabled={!!busy}
-              title="예약 취소하고 '저장됨'으로 되돌리기"
-              style={{
-                marginRight: "auto",
-                background: "transparent",
-                border: "1px solid var(--border-default)",
-                padding: "8px 14px",
-                borderRadius: 8,
-                fontSize: 12.5,
-                fontWeight: 600,
-                color: "var(--text-secondary)",
-                cursor: busy ? "not-allowed" : "pointer",
-                opacity: busy ? 0.6 : 1,
-              }}
-            >
-              {busy === "unschedule" ? "취소 중…" : "예약 취소"}
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={!!busy}
-            style={{
-              background: "transparent",
-              border: 0,
-              padding: "8px 14px",
-              borderRadius: 8,
-              fontSize: 12.5,
-              fontWeight: 600,
-              color: "var(--text-secondary)",
-              cursor: busy ? "not-allowed" : "pointer",
-            }}
-          >
-            닫기
-          </button>
-          {mode === "now" ? (
-            <button
-              type="button"
-              onClick={() => handle("publishNow")}
-              disabled={!!busy || selectedChannels.size === 0}
-              style={{
-                background:
-                  busy || selectedChannels.size === 0
-                    ? "#cbd5e1"
-                    : "linear-gradient(135deg, var(--brand-600) 0%, var(--brand-700) 100%)",
-                color: "white",
-                border: 0,
-                padding: "10px 18px",
-                borderRadius: 8,
-                fontSize: 13,
-                fontWeight: 700,
-                cursor: busy || selectedChannels.size === 0 ? "not-allowed" : "pointer",
-                boxShadow:
-                  busy || selectedChannels.size === 0
-                    ? "none"
-                    : "0 1px 2px rgba(99,102,241,0.2), 0 4px 12px rgba(99,102,241,0.25)",
-                transition: "all 0.12s",
-              }}
-            >
-              {busy === "publishNow" ? "발행 중…" : `🚀 ${selectedChannels.size}개 채널로 지금 발행`}
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={() => handle("schedule")}
-              disabled={!!busy || !dt || selectedChannels.size === 0}
-              style={{
-                background:
-                  busy || !dt || selectedChannels.size === 0
-                    ? "#cbd5e1"
-                    : "linear-gradient(135deg, var(--brand-600) 0%, var(--brand-700) 100%)",
-                color: "white",
-                border: 0,
-                padding: "10px 18px",
-                borderRadius: 8,
-                fontSize: 13,
-                fontWeight: 700,
-                cursor: busy || !dt || selectedChannels.size === 0 ? "not-allowed" : "pointer",
-                boxShadow:
-                  busy || !dt || selectedChannels.size === 0
-                    ? "none"
-                    : "0 1px 2px rgba(99,102,241,0.2), 0 4px 12px rgba(99,102,241,0.25)",
-                transition: "all 0.12s",
-              }}
-            >
-              {busy === "schedule" ? "저장 중…" : `📅 ${selectedChannels.size}개 채널로 예약`}
-            </button>
-          )}
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function SectionLabel({
-  num,
-  label,
-  right,
-}: {
-  num: string
-  label: string
-  right?: React.ReactNode
-}) {
-  return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 8,
-        marginBottom: 10,
-      }}
-    >
-      <span
-        style={{
-          width: 20,
-          height: 20,
-          borderRadius: "50%",
-          background: "var(--brand-100)",
-          color: "var(--brand-700)",
-          fontSize: 11,
-          fontWeight: 800,
-          display: "grid",
-          placeItems: "center",
-          flexShrink: 0,
-        }}
-      >
-        {num}
-      </span>
-      <span
-        style={{
-          fontSize: 13,
-          fontWeight: 700,
-          color: "var(--text-primary)",
-          letterSpacing: "-0.01em",
-        }}
-      >
-        {label}
-      </span>
-      {right && (
-        <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
-          {right}
-        </div>
-      )}
-    </div>
-  )
-}
-
-function ChannelCard({
-  channel,
-  on,
-  onToggle,
-}: {
-  channel: PublishChannel
-  on: boolean
-  onToggle: () => void
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onToggle}
-      style={{
-        textAlign: "left",
-        padding: "11px 12px",
-        borderRadius: 10,
-        border: `1.5px solid ${on ? "var(--brand-500)" : "var(--border-default)"}`,
-        background: on ? "var(--brand-50)" : "white",
-        cursor: "pointer",
-        display: "flex",
-        gap: 10,
-        alignItems: "center",
-        transition: "all 0.15s ease",
-        boxShadow: on
-          ? "0 0 0 1px var(--brand-500) inset, 0 1px 2px rgba(99,102,241,0.08)"
-          : "0 1px 2px rgba(15, 23, 42, 0.03)",
-      }}
-      onMouseEnter={(e) => {
-        if (!on) e.currentTarget.style.borderColor = "var(--brand-300)"
-      }}
-      onMouseLeave={(e) => {
-        if (!on) e.currentTarget.style.borderColor = "var(--border-default)"
-      }}
-    >
-      <span style={{ fontSize: 22, lineHeight: 1, flexShrink: 0 }}>{channel.emoji}</span>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div
-          style={{
-            fontSize: 13,
-            fontWeight: 700,
-            marginBottom: 2,
-            color: on ? "var(--brand-800, #3730a3)" : "var(--text-primary)",
-            letterSpacing: "-0.01em",
-          }}
-        >
-          {channel.name}
-        </div>
-        <div
-          style={{
-            fontSize: 10.5,
-            color: on ? "var(--brand-700)" : "var(--text-muted)",
-            lineHeight: 1.4,
-            opacity: on ? 0.85 : 1,
-          }}
-        >
-          {channel.format}
-        </div>
-      </div>
-      <span
-        style={{
-          width: 18,
-          height: 18,
-          borderRadius: 5,
-          border: `1.5px solid ${on ? "var(--brand-600)" : "var(--border-strong)"}`,
-          background: on ? "var(--brand-600)" : "white",
-          display: "grid",
-          placeItems: "center",
-          color: "white",
-          fontSize: 11,
-          fontWeight: 800,
-          flexShrink: 0,
-          transition: "all 0.12s",
-        }}
-      >
-        {on ? "✓" : ""}
-      </span>
-    </button>
-  )
-}
-
-function ModeCard({
-  emoji,
-  label,
-  sub,
-  on,
-  onClick,
-}: {
-  emoji: string
-  label: string
-  sub: string
-  on: boolean
-  onClick: () => void
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      style={{
-        padding: "16px 12px",
-        borderRadius: 10,
-        border: `1.5px solid ${on ? "var(--brand-500)" : "var(--border-default)"}`,
-        background: on
-          ? "linear-gradient(180deg, var(--brand-50) 0%, white 100%)"
-          : "white",
-        cursor: "pointer",
-        display: "flex",
-        flexDirection: "column",
-        gap: 4,
-        alignItems: "center",
-        transition: "all 0.15s ease",
-        boxShadow: on
-          ? "0 0 0 1px var(--brand-500) inset, 0 1px 2px rgba(99,102,241,0.1)"
-          : "0 1px 2px rgba(15, 23, 42, 0.03)",
-      }}
-      onMouseEnter={(e) => {
-        if (!on) e.currentTarget.style.borderColor = "var(--brand-300)"
-      }}
-      onMouseLeave={(e) => {
-        if (!on) e.currentTarget.style.borderColor = "var(--border-default)"
-      }}
-    >
-      <div style={{ fontSize: 24, lineHeight: 1, marginBottom: 2 }}>{emoji}</div>
-      <div
-        style={{
-          fontSize: 13.5,
-          fontWeight: 700,
-          color: on ? "var(--brand-800, #3730a3)" : "var(--text-primary)",
-          letterSpacing: "-0.01em",
-        }}
-      >
-        {label}
-      </div>
-      <div
-        style={{
-          fontSize: 11,
-          color: on ? "var(--brand-700)" : "var(--text-muted)",
-          opacity: on ? 0.85 : 1,
-        }}
-      >
-        {sub}
-      </div>
-    </button>
-  )
-}
 
 function SummaryTile({
   label,

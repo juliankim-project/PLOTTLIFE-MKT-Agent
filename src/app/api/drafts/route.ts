@@ -17,7 +17,7 @@ export async function GET(req: Request) {
   let q = db
     .from("drafts")
     .select(
-      "id, project_id, topic_id, title, slug, content_type, target_kpi, primary_keyword, status, progress_pct, metadata, hero_image_url, body_markdown, created_at, updated_at"
+      "id, project_id, topic_id, title, slug, content_type, target_kpi, primary_keyword, secondary_keywords, status, progress_pct, metadata, hero_image_url, body_markdown, created_at, updated_at"
     )
     .order("created_at", { ascending: false })
     .limit(limit)
