@@ -6,6 +6,7 @@
 import "server-only"
 import { supabaseAdmin } from "@/lib/supabase/server"
 import { runAgent } from "./agents"
+import { isAllowedSource, groupSources } from "./source-format"
 import {
   INTENTS,
   INTENT_DEFS,
@@ -182,7 +183,7 @@ export async function generateAndStoreIdeas(input: GenInput) {
       },
       status: "running",
     })
-    .select("id")
+    .select("id, params")
     .single()
   if (runErr || !run) throw new Error(`ideation_runs insert: ${runErr?.message}`)
 
@@ -202,11 +203,84 @@ export async function generateAndStoreIdeas(input: GenInput) {
     ? `\n\n## 리서치 컨텍스트 (이 키워드들을 자연스럽게 녹여)\n${input.researchContext}`
     : ""
 
+  /* ─── STEP 1: Grounded 시장 신호 수집 ─────────────────────────
+     축들을 1~2줄로 압축해 짧은 grounded prompt → 트렌드/실제 검색 패턴 수집.
+     ※ Read-only — ideas 본문 텍스트는 절대 변경하지 않음. STEP 2 컨텍스트로만 사용. */
+  const segmentSummary = personaRows.length > 0
+    ? personaRows.map((p) => p.label).join(", ")
+    : "외국인 유학생·주재원·노마드·한달살기·내국인 이사"
+  const intentSummary = (input.intents ?? []).map((i) => INTENT_DEFS[i]?.ko ?? i).join(", ")
+  const stageSummary = (input.journeyStages ?? []).map((s) => STAGE_DEFS[s]?.ko ?? s).join(", ")
+  const seasonSummary = pickDefs(SEASONS, input.seasons).map((s) => s.ko).join(", ")
+  const painSummary = pickDefs(PAIN_TAGS, input.painTags).map((p) => p.ko).join(", ")
+  const queryHint = input.searchQuery?.trim() ? `검색 의도: "${input.searchQuery.trim()}"` : ""
+
+  const signalContext = [
+    `타겟: ${segmentSummary}`,
+    intentSummary && `목적: ${intentSummary}`,
+    stageSummary && `여정: ${stageSummary}`,
+    seasonSummary && `시즌: ${seasonSummary}`,
+    painSummary && `Pain: ${painSummary}`,
+    queryHint,
+  ].filter(Boolean).join(" / ")
+
+  const signalPrompt = `한국 단기임대 블로그 주제 발굴을 위해 다음 축의 최근 시장 신호를 검색해 정리해줘.
+
+[축]
+${signalContext}
+
+[검색해서 수집할 것 — 8~12줄로 압축]
+- 최근 6~12개월 떠오르는 검색 키워드
+- 외국인·유학생·노마드 커뮤니티에서 자주 나오는 질문 패턴 (Reddit/Quora)
+- 신학기·관광 시즌 등 시즌성 트렌드
+- 정부·공식 통계의 최신 수치 (외국인 유입, 임대 시장 등)
+- 새 법령·정책 변화 (2025~2026)
+
+[허용 출처 — 화이트리스트만]
+✅ 정부·공공기관(.go.kr, .or.kr) · 법령 DB · 학술(.ac.kr) · 위키 · 주요 뉴스 · Reddit·Quora · OECD/UN
+❌ 호텔/리조트/OTA/타사 단기임대·부동산 중개업체
+
+각 신호는 한 줄, "신호 — 출처 매체·연도" 형식. 8~12줄로.`
+
+  let signalText = ""
+  let signalPublishers: string[] = []
+  try {
+    const sigResult = await runAgent({
+      agentSlug: "content-strategist",
+      stage: "ideation",
+      projectId: input.projectId,
+      prompt: signalPrompt,
+      temperature: 0.3,
+      maxTokens: 2500,
+      json: false,
+      grounded: true,
+      modelOverride: "gemini-2.5-flash",
+    })
+    signalText = sigResult.text
+    /* 화이트리스트 필터 + 매체별 그룹화 */
+    const rawSources = sigResult.sources ?? []
+    const allowed = rawSources.filter((s) => isAllowedSource(s))
+    signalPublishers = groupSources(allowed).slice(0, 8).map((g) => g.publisher)
+    if (rawSources.length !== allowed.length) {
+      console.log(
+        `[ideation] signal sources filtered: ${rawSources.length} → ${allowed.length}`
+      )
+    }
+  } catch (err) {
+    /* signal 수집 실패해도 주제 생성은 진행 */
+    console.warn("[ideation] signal step failed:", err instanceof Error ? err.message : err)
+  }
+
+  /* STEP 2 컨텍스트 — 짧은 prefix 로 주입 */
+  const signalBlock = signalText && signalPublishers.length > 0
+    ? `\n\n## 🔥 Google Search 로 수집한 최신 시장 신호 (반드시 반영)\n${signalText}\n\n[참고 매체] ${signalPublishers.join(" · ")}\n\n위 신호들을 ideas.signal_kind/signal_detail/related_keywords 에 자연스럽게 녹여라.`
+    : ""
+
   const prompt = `플라트라이프(한국 단기임대 플랫폼) 블로그용 주제 ${count}개를 생성해줘.
 
 ${segmentBlock}
 
-${compassBlock}${contextBlock}
+${compassBlock}${contextBlock}${signalBlock}
 
 ## 요구사항
 - 각 주제는 위 축들을 조합한 구체적 롱테일 주제여야 함
@@ -321,9 +395,26 @@ related_keywords 는 3~5개.`
       throw new Error(`ideas insert: ${insErr.message}`)
     }
 
+    /* 시장 신호 보존 — UI 헤더에서 노출 (ideas 본문에는 안 들어감) */
+    const groundedSignals = signalText
+      ? {
+          text: signalText,
+          publishers: signalPublishers,
+          generated_at: new Date().toISOString(),
+        }
+      : null
+
+    const baseParams = (run.params as Record<string, unknown> | null) ?? {}
     await db
       .from("ideation_runs")
-      .update({ status: "succeeded", completed_at: new Date().toISOString() })
+      .update({
+        status: "succeeded",
+        completed_at: new Date().toISOString(),
+        params: {
+          ...baseParams,
+          grounded_signals: groundedSignals,
+        },
+      })
       .eq("id", run.id)
 
     return {
@@ -334,6 +425,7 @@ related_keywords 는 3~5개.`
       durationMs: result.durationMs,
       count: inserted?.length ?? 0,
       ideas: inserted ?? [],
+      groundedSignals,
     }
   } catch (err) {
     await db
