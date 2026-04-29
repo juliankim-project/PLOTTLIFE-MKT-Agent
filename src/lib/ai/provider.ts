@@ -29,6 +29,14 @@ export interface CompletionOptions {
   max_tokens?: number
   /** JSON mode — 응답을 JSON 객체로 강제 */
   json?: boolean
+  /** Google Search Grounding — 실시간 검색 기반 답변. JSON 모드와 동시 사용 불가 */
+  grounded?: boolean
+}
+
+export interface GroundingSource {
+  title?: string
+  uri: string
+  domain?: string
 }
 
 export interface CompletionResult {
@@ -38,6 +46,8 @@ export interface CompletionResult {
   inputTokens?: number
   outputTokens?: number
   raw?: unknown
+  /** Grounding 활성화 시 응답이 참조한 출처 URL 목록 */
+  sources?: GroundingSource[]
 }
 
 // ── Singleton clients ──────────────────────────────────────────
@@ -177,7 +187,14 @@ async function sleep(ms: number) {
 
 interface GenaiTextResponse {
   text?: string
-  candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>
+  candidates?: Array<{
+    content?: { parts?: Array<{ text?: string }> }
+    groundingMetadata?: {
+      groundingChunks?: Array<{
+        web?: { uri?: string; title?: string; domain?: string }
+      }>
+    }
+  }>
   usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number }
 }
 
@@ -190,11 +207,15 @@ async function callGeminiOnce(modelName: string, opts: CompletionOptions): Promi
     parts: [{ text: m.content }],
   }))
 
-  /* Gemini 2.5 는 thinking tokens 를 소모 → JSON 모드에서 visible 응답이 잘림 방지
-     JSON 응답을 요구할 땐 thinking budget 을 0 으로 (Flash/Pro 공통) */
-  const thinkingConfig = opts.json && modelName.startsWith("gemini-2.5")
-    ? { thinkingBudget: 0 }
-    : undefined
+  /* Grounding (Google Search) — JSON 모드와 동시 사용 불가 */
+  const useGrounding = !!opts.grounded && !opts.json
+  const tools = useGrounding ? [{ googleSearch: {} }] : undefined
+
+  /* Gemini 2.5 thinking 끔: JSON 모드 (잘림 방지). Pro 모델은 thinking 강제라 제외. */
+  const thinkingConfig =
+    opts.json && modelName.startsWith("gemini-2.5") && !modelName.includes("pro")
+      ? { thinkingBudget: 0 }
+      : undefined
 
   const res = (await ai.models.generateContent({
     model: modelName,
@@ -205,12 +226,32 @@ async function callGeminiOnce(modelName: string, opts: CompletionOptions): Promi
       maxOutputTokens: opts.max_tokens,
       responseMimeType: opts.json ? "application/json" : undefined,
       ...(thinkingConfig ? { thinkingConfig } : {}),
+      ...(tools ? { tools } : {}),
     },
   })) as GenaiTextResponse
 
   const text =
     res.text ??
     (res.candidates?.[0]?.content?.parts?.map((p) => p.text ?? "").join("") ?? "")
+
+  /* Grounding sources 추출 (중복 URL 제거) */
+  let sources: GroundingSource[] | undefined
+  if (useGrounding) {
+    const chunks = res.candidates?.[0]?.groundingMetadata?.groundingChunks ?? []
+    const seen = new Set<string>()
+    const list: GroundingSource[] = []
+    for (const c of chunks) {
+      const uri = c.web?.uri
+      if (!uri || seen.has(uri)) continue
+      seen.add(uri)
+      list.push({
+        uri,
+        title: c.web?.title,
+        domain: c.web?.domain,
+      })
+    }
+    sources = list
+  }
 
   return {
     text,
@@ -219,6 +260,7 @@ async function callGeminiOnce(modelName: string, opts: CompletionOptions): Promi
     inputTokens: res.usageMetadata?.promptTokenCount,
     outputTokens: res.usageMetadata?.candidatesTokenCount,
     raw: res,
+    sources,
   }
 }
 

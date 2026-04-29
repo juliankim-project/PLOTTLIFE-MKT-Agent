@@ -5,7 +5,7 @@
 
 import "server-only"
 import { supabaseAdmin } from "@/lib/supabase/server"
-import { complete, type Provider, type AIMessage } from "./provider"
+import { complete, type Provider, type AIMessage, type GroundingSource } from "./provider"
 
 export interface AgentRecord {
   id: string
@@ -54,6 +54,8 @@ export interface RunAgentInput {
   maxTokens?: number
   /** JSON 응답 강제 */
   json?: boolean
+  /** Google Search Grounding — JSON 과 동시 사용 불가 */
+  grounded?: boolean
   /** 실행자 provider/model 덮어쓰기 (없으면 agent 기본) */
   providerOverride?: Provider
   modelOverride?: string
@@ -69,6 +71,8 @@ export interface RunAgentResult {
   inputTokens?: number
   outputTokens?: number
   durationMs: number
+  /** Grounding 활성화 시 응답이 참조한 출처 */
+  sources?: GroundingSource[]
 }
 
 /**
@@ -113,6 +117,7 @@ export async function runAgent(input: RunAgentInput): Promise<RunAgentResult> {
       temperature: input.temperature,
       max_tokens: input.maxTokens,
       json: input.json,
+      grounded: input.grounded,
     })
     const durationMs = Date.now() - started
     let parsedJson: unknown = undefined
@@ -157,6 +162,7 @@ export async function runAgent(input: RunAgentInput): Promise<RunAgentResult> {
       inputTokens: out.inputTokens,
       outputTokens: out.outputTokens,
       durationMs,
+      sources: out.sources,
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
