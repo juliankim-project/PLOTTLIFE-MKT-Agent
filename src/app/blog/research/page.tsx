@@ -56,6 +56,19 @@ export default function ResearchPage() {
   const [sort, setSort] = useState<Sort>("total")
   const [search, setSearch] = useState("")
 
+  /* Phase 4 — 정성 인사이트 (Google Search 기반, 클릭 트리거) */
+  interface MarketInsights {
+    trends: string[]
+    questions: string[]
+    gaps: string[]
+    publishers: string[]
+    summary?: string
+    generated_at: string
+  }
+  const [insights, setInsights] = useState<MarketInsights | null>(null)
+  const [insightsLoading, setInsightsLoading] = useState(false)
+  const [insightsCategory, setInsightsCategory] = useState<"all" | Category | null>(null)
+
   const load = useCallback(
     async (s: Sort = sort) => {
       setLoading(true)
@@ -112,6 +125,41 @@ export default function ResearchPage() {
       rising,
     }
   }, [keywords])
+
+  const loadInsights = async () => {
+    setInsightsLoading(true)
+    setError(null)
+    try {
+      const categoryLabel = activeCat === "all" ? "전체" : CAT_META[activeCat].label
+      const topKeywords = visible
+        .filter((k) => (k.monthly_total ?? 0) > 0)
+        .sort((a, b) => (b.monthly_total ?? 0) - (a.monthly_total ?? 0))
+        .slice(0, 10)
+        .map((k) => k.label)
+      const j = await safeFetchJson<{ ok: boolean; insights?: MarketInsights; error?: string }>(
+        "/api/research/insights",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            category: categoryLabel,
+            topKeywords,
+            scope: "한국 단기임대 시장",
+          }),
+        }
+      )
+      if (!j.ok || !j.insights) throw new Error(j.error ?? "인사이트 분석 실패")
+      setInsights(j.insights)
+      setInsightsCategory(activeCat)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "인사이트 분석 실패")
+    } finally {
+      setInsightsLoading(false)
+    }
+  }
+
+  /* 카테고리 바뀌면 기존 인사이트는 stale 표시 */
+  const insightsStale = insights != null && insightsCategory !== activeCat
 
   const refreshVisible = async () => {
     const ids = visible.map((k) => k.id)
@@ -191,6 +239,110 @@ export default function ResearchPage() {
           sub={summary.topVol > 0 ? `월 ${summary.topVol.toLocaleString()}회` : "—"}
         />
         <SummaryTile label="저경쟁 기회" value={`${summary.rising}개`} sub="월 1K+ · 경쟁 낮음" />
+      </div>
+
+      {/* Phase 4 — Google Search 정성 인사이트 (클릭 트리거) */}
+      <div
+        className="bcard"
+        style={{
+          marginBottom: 14,
+          background: "linear-gradient(180deg, #eef2ff 0%, #f5f3ff 100%)",
+          border: "1px solid #c7d2fe",
+        }}
+      >
+        <div
+          style={{
+            padding: "14px 16px",
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            flexWrap: "wrap",
+          }}
+        >
+          <div style={{ fontSize: 18 }}>💡</div>
+          <div style={{ flex: 1, minWidth: 200 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "#3730a3" }}>
+              시장 인사이트 분석
+              <span style={{ fontSize: 10.5, color: "#6366f1", fontWeight: 500, marginLeft: 6 }}>
+                · Google Search 기반 정성 분석 · {activeCat === "all" ? "전체 카테고리" : CAT_META[activeCat].label}
+              </span>
+            </div>
+            <div style={{ fontSize: 11, color: "#4338ca", marginTop: 2 }}>
+              {insights
+                ? insightsStale
+                  ? `이전 분석은 다른 카테고리 — 다시 분석을 눌러주세요`
+                  : `${new Date(insights.generated_at).toLocaleString("ko-KR")} 분석`
+                : "왜 지금 떠오르는지 · 자주 나오는 질문 · 콘텐츠 갭을 한 번에"}
+            </div>
+          </div>
+          <button
+            type="button"
+            className="bbtn bbtn--primary bbtn--sm"
+            onClick={loadInsights}
+            disabled={insightsLoading || visible.length === 0}
+            style={{ background: "#4f46e5" }}
+          >
+            {insightsLoading ? "분석 중… (5~15초)" : insights && !insightsStale ? "🔄 재분석" : "🔍 인사이트 분석"}
+          </button>
+        </div>
+        {insights && !insightsStale && (
+          <div style={{ padding: "0 16px 16px" }}>
+            {insights.summary && (
+              <div
+                style={{
+                  padding: "10px 12px",
+                  background: "white",
+                  border: "1px solid #ddd6fe",
+                  borderRadius: 6,
+                  fontSize: 12.5,
+                  fontWeight: 600,
+                  color: "#3730a3",
+                  marginBottom: 10,
+                  lineHeight: 1.55,
+                }}
+              >
+                📌 {insights.summary}
+              </div>
+            )}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
+              <InsightColumn
+                emoji="📈"
+                title="트렌드 동향"
+                desc="왜 지금 떠오르는지"
+                items={insights.trends}
+                accent="#4338ca"
+              />
+              <InsightColumn
+                emoji="❓"
+                title="자주 나오는 질문"
+                desc="실수요자의 실제 검색 의도"
+                items={insights.questions}
+                accent="#0e7490"
+              />
+              <InsightColumn
+                emoji="🎯"
+                title="콘텐츠 갭"
+                desc="경쟁이 안 다루는 각도"
+                items={insights.gaps}
+                accent="#b45309"
+              />
+            </div>
+            {insights.publishers.length > 0 && (
+              <div
+                style={{
+                  marginTop: 10,
+                  paddingTop: 10,
+                  borderTop: "1px dashed #c7d2fe",
+                  fontSize: 11,
+                  color: "#4338ca",
+                }}
+              >
+                <b style={{ marginRight: 6 }}>참고 매체:</b>
+                {insights.publishers.join(" · ")}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* 카테고리 필터 */}
@@ -343,6 +495,52 @@ export default function ResearchPage() {
           </table>
         </div>
       </div>
+    </div>
+  )
+}
+
+function InsightColumn({
+  emoji,
+  title,
+  desc,
+  items,
+  accent,
+}: {
+  emoji: string
+  title: string
+  desc: string
+  items: string[]
+  accent: string
+}) {
+  return (
+    <div
+      style={{
+        padding: "10px 12px",
+        background: "white",
+        border: "1px solid #ddd6fe",
+        borderRadius: 6,
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
+        <span style={{ fontSize: 14 }}>{emoji}</span>
+        <div>
+          <div style={{ fontSize: 12, fontWeight: 700, color: accent }}>{title}</div>
+          <div style={{ fontSize: 10, color: "var(--text-muted)" }}>{desc}</div>
+        </div>
+      </div>
+      {items.length === 0 ? (
+        <div style={{ fontSize: 11.5, color: "var(--text-muted)", fontStyle: "italic", padding: "4px 0" }}>
+          분석 결과 없음
+        </div>
+      ) : (
+        <ul style={{ margin: 0, paddingLeft: 16, fontSize: 11.5, color: "var(--text-secondary)", lineHeight: 1.6 }}>
+          {items.map((it, i) => (
+            <li key={i} style={{ marginBottom: 3 }}>
+              {it}
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   )
 }
