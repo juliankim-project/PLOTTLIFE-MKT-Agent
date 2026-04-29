@@ -1,8 +1,9 @@
 /**
  * 공통 Markdown 미리보기 — write/[id] 와 contents/[id] 에서 공유.
- * 지원: H1~H3, **bold**, `code`, [link], 리스트(- *), 체크리스트(- [x]),
+ * 지원: H1~H3, **bold**, `code`, 리스트(- *), 체크리스트(- [x]),
  *      이미지 ![alt](url) (+ Gemini 워터마크), IMAGE_SLOT 플레이스홀더 + 생성 중 스켈레톤,
  *      테이블 (|--|), 블록쿼트 / 콜아웃 (💡⚠️ℹ️✅), 구분선 (---)
+ * ※ 외부 링크([text](url)) 는 텍스트로만 렌더 (클릭 차단 — 이탈 방지)
  */
 
 "use client"
@@ -631,16 +632,15 @@ function formatLinks(s: string, baseKey: number): React.ReactNode {
         </code>
       )
     } else if (m[3] && m[4]) {
+      /* 외부 링크 차단 — 클릭 가능한 anchor 대신 텍스트만 노출 (이탈 방지).
+         원본 URL 은 drafts.metadata.sources 에 보존됨. */
       out.push(
-        <a
+        <span
           key={`l${baseKey}-${key++}`}
-          href={m[4]}
-          target="_blank"
-          rel="noreferrer"
-          style={{ color: "var(--brand-600)", textDecoration: "underline" }}
+          style={{ color: "var(--text-secondary)" }}
         >
           {m[3]}
-        </a>
+        </span>
       )
     }
     rest = rest.slice(idx + m[0].length)
