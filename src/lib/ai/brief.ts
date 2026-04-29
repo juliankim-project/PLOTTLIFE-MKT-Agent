@@ -93,7 +93,8 @@ ${styleGuide}
 
 [요구사항]
 이 주제로 실제 블로그 본문을 작성할 Copywriter 에이전트에게 넘길 상세 브리프를 JSON 으로 작성해줘.
-아웃라인은 H2 3~5개 + 각 H2 하위 H3 0~3개 수준으로, 플라트 블로그 스타일 구조(훅→문제→비교→해결 Step→CTA)를 따라야 함.
+아웃라인은 H2 3~4개 + 각 H2 하위 H3 0~2개 수준으로 **간결하게**, 플라트 블로그 스타일 구조(훅→문제→비교→해결 Step→CTA)를 따라야 함.
+각 H2 의 est_words 는 **300~450**, H3 는 **150~250** (총 분량 2200~3000자 가량). 분량 부풀리기 금지.
 키워드는 실제 네이버·구글에서 검색될 것 같은 것 위주. primary 1개 + secondary 3~5개.
 
 응답은 반드시 아래 JSON 스키마 (다른 텍스트·코드블록 금지):
@@ -110,17 +111,17 @@ ${styleGuide}
       "heading": "H2 제목 (질문문 or 인용구)",
       "level": 2,
       "bullets": ["핵심 포인트 1", "핵심 포인트 2"],
-      "est_words": 500
+      "est_words": 350
     },
     {
       "heading": "H3 서브 섹션 (① ② ③)",
       "level": 3,
       "bullets": ["..."],
-      "est_words": 200
+      "est_words": 180
     }
   ],
   "cta_hints": ["마무리 섹션에서 언급할 플라트 서비스 포인트 1~2개"],
-  "est_length": "3200~3800자"
+  "est_length": "2200~3000자"
 }`
 
   const result = await runAgent({
@@ -159,7 +160,7 @@ ${styleGuide}
     cta_hints: Array.isArray(parsed.cta_hints)
       ? parsed.cta_hints.slice(0, 5).map((x) => String(x).slice(0, 200))
       : [],
-    est_length: String(parsed.est_length ?? "3000~4000자"),
+    est_length: String(parsed.est_length ?? "2200~3000자"),
   }
 
   // topics insert (또는 idea_id 기준 upsert)
