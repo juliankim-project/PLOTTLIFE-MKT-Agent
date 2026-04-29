@@ -7,6 +7,8 @@
 import "server-only"
 import { supabaseAdmin } from "@/lib/supabase/server"
 import { runAgent } from "./agents"
+import { isAllowedSource, groupSources } from "./source-format"
+import type { GroundingSource } from "./provider"
 
 const CATEGORIES = ["SEO", "팩트·출처", "톤 & 브랜드"] as const
 type Category = (typeof CATEGORIES)[number]
@@ -33,11 +35,24 @@ interface SourceCheck {
   overall_note?: string
 }
 
+/** 본문 주장의 grounded 검증 결과 — 검수 UI 전용. 본문에 절대 노출 X */
+type FactCheckStatus = "VERIFIED" | "PARTIAL" | "CONTRADICTED" | "UNVERIFIABLE"
+interface FactCheck {
+  /** 본문에서 추출한 사실 주장 (수치·법령·절차·기관 등) */
+  claim: string
+  status: FactCheckStatus
+  /** 검증 출처 — 기관·연도. status 가 UNVERIFIABLE 이면 비어있음 */
+  source?: string
+  /** PARTIAL/CONTRADICTED 일 때 보완 설명 */
+  note?: string
+}
+
 interface AnalysisResult {
   overall_score: number
   summary: string
   categories: ReviewCategory[]
   source_check: SourceCheck
+  fact_checks?: FactCheck[]
 }
 
 export interface ReviewInput {
@@ -72,7 +87,66 @@ export async function analyzeAndStoreReview(input: ReviewInput) {
   /* 현재 날짜 — 시기성 체크용 */
   const today = new Date().toISOString().slice(0, 10)
 
-  const prompt = `다음 플라트라이프(한국 단기임대 플랫폼) 블로그 본문을 **검수**해주세요.
+  /* ─── STEP 1: Grounded fact-check ─────────────────────────────
+     본문의 핵심 사실 주장을 Google Search 로 재검증.
+     ※ Read-only — 본문(body_markdown)은 절대 수정하지 않음.
+     ※ 결과는 STEP 2 컨텍스트로만 주입되며, drafts.body_markdown 에 흘러갈 경로 없음. */
+  const factCheckPrompt = `다음 한국 단기임대 블로그 본문에서 검증 가능한 **사실 주장 5~7개**를 추출하고, 각각을 Google Search 로 검증해주세요.
+
+[본문 — 검증 대상]
+${draft.body_markdown.slice(0, 6000)}
+
+[추출 기준]
+- 검증 가능한 명시적 사실만 (수치, 법령, 절차, 기관 공지, 일정 등)
+- 의견·감정·CTA 표현은 제외
+- 각 주장은 본문에서 인용한 짧은 문장으로
+
+[검증 출처 — 화이트리스트만]
+✅ 정부·공공기관(.go.kr, .or.kr) · 법령 DB · 학술(.ac.kr) · 위키 · 주요 뉴스 · Reddit/Quora · OECD/UN
+❌ 호텔/리조트(켄싱턴·롯데·신라 등) · OTA(야놀자·여기어때·에어비앤비 등) · 타사 단기임대·중개업체
+
+[응답 형식 — 줄당 한 주장]
+[VERIFIED] 주장 — 출처 기관·연도
+[PARTIAL] 주장 — 출처 + 차이/조건
+[CONTRADICTED] 주장 — 출처 + 어떻게 다른지
+[UNVERIFIABLE] 주장 — 공식 출처 없음
+
+5~7줄로 압축. 다른 설명 없이 위 형식만.`
+
+  let factCheckText = ""
+  let factCheckSources: GroundingSource[] = []
+  try {
+    const fcResult = await runAgent({
+      agentSlug: "seo-auditor",
+      stage: "review",
+      projectId: input.projectId,
+      prompt: factCheckPrompt,
+      temperature: 0.2,
+      maxTokens: 3000,
+      json: false,
+      grounded: true,
+      modelOverride: "gemini-2.5-flash",
+    })
+    factCheckText = fcResult.text
+    /* 화이트리스트 필터 — 출처에 타사 약관 등 섞이지 않게 */
+    const rawSources = fcResult.sources ?? []
+    factCheckSources = rawSources.filter((s) => isAllowedSource(s))
+    if (rawSources.length !== factCheckSources.length) {
+      console.log(
+        `[review] fact-check sources filtered: ${rawSources.length} → ${factCheckSources.length}`
+      )
+    }
+  } catch (err) {
+    /* fact-check 실패해도 종합 검수는 진행 */
+    console.warn("[review] fact-check step failed:", err instanceof Error ? err.message : err)
+  }
+
+  /* fact-check 컨텍스트 — STEP 2 prompt 에 주입 */
+  const factCheckContext = factCheckText
+    ? `\n[STEP 0: Google Search 로 검증한 본문 사실 주장 — 검수 점수에 반영]\n${factCheckText}\n\n반드시 위 검증 결과를 \`fact_checks\` 배열에 그대로 정리해 응답에 포함하고, "팩트·출처" 카테고리 score 산정에도 반영하세요.\n────────────\n\n`
+    : ""
+
+  const prompt = `${factCheckContext}다음 플라트라이프(한국 단기임대 플랫폼) 블로그 본문을 **검수**해주세요.
 
 오늘 날짜: ${today}
 
@@ -134,10 +208,21 @@ ${draft.body_markdown}
     "missing_citations": [],
     "date_inconsistencies": [],
     "overall_note": "출처 관련 종합 코멘트 한 줄"
-  }
+  },
+  "fact_checks": [
+    {
+      "claim": "본문에서 인용한 사실 주장 한 문장",
+      "status": "VERIFIED" | "PARTIAL" | "CONTRADICTED" | "UNVERIFIABLE",
+      "source": "검증 출처 (기관·연도) — UNVERIFIABLE 이면 빈 문자열",
+      "note": "PARTIAL/CONTRADICTED 일 때 보완 설명 (그 외 빈 문자열)"
+    }
+  ]
 }
 
-의심 신호가 전혀 없으면 빈 배열·0 으로 채우세요. severity 는 ok=false 일 때만 필수.`
+⚠️ 중요:
+- 의심 신호가 전혀 없으면 빈 배열·0 으로 채우세요. severity 는 ok=false 일 때만 필수.
+- \`fact_checks\` 는 위 [STEP 0] 검증 결과를 그대로 옮기되, status 가 PARTIAL/CONTRADICTED 인 항목은 \`note\` 를 반드시 채울 것.
+- \`fact_checks\` 값은 검수자에게만 보이는 내부 데이터이며 본문(body_markdown)에 절대 삽입되지 않음.`
 
   const result = await runAgent({
     agentSlug: "seo-auditor",
@@ -177,6 +262,25 @@ ${draft.body_markdown}
     }))
   )
 
+  /* fact_checks 정규화 — 알 수 없는 status 는 UNVERIFIABLE 로 강등 */
+  const allowedStatuses = new Set<FactCheckStatus>(["VERIFIED", "PARTIAL", "CONTRADICTED", "UNVERIFIABLE"])
+  const factChecks: FactCheck[] = Array.isArray(parsed.fact_checks)
+    ? parsed.fact_checks
+        .filter((f): f is FactCheck => !!f && typeof f.claim === "string" && f.claim.trim().length > 0)
+        .map((f) => ({
+          claim: f.claim.trim(),
+          status: allowedStatuses.has(f.status) ? f.status : "UNVERIFIABLE",
+          source: f.source?.trim() || undefined,
+          note: f.note?.trim() || undefined,
+        }))
+        .slice(0, 12) // 최대 12개
+    : []
+
+  /* fact-check 검증에 사용한 출처 — 매체별 그룹화 (UI 카드용) */
+  const factCheckPublishers = groupSources(factCheckSources)
+    .slice(0, 8)
+    .map((g) => g.publisher)
+
   /* reviews 저장 — 기존 동일 draft review 가 있으면 최신만 유지 (soft upsert) */
   await db.from("reviews").delete().eq("draft_id", input.draftId)
   const { data: saved, error: insErr } = await db
@@ -189,6 +293,8 @@ ${draft.body_markdown}
         categories: parsed.categories,
         source_check: parsed.source_check,
         summary: parsed.summary,
+        fact_checks: factChecks,
+        fact_check_publishers: factCheckPublishers,
       },
       overall_score: Math.max(0, Math.min(100, Math.round(parsed.overall_score))),
       status: "pending",
@@ -207,6 +313,8 @@ ${draft.body_markdown}
     summary: parsed.summary,
     categories: parsed.categories,
     source_check: parsed.source_check,
+    fact_checks: factChecks,
+    fact_check_publishers: factCheckPublishers,
   }
 }
 

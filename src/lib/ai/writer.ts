@@ -8,72 +8,12 @@ import "server-only"
 import { supabaseAdmin } from "@/lib/supabase/server"
 import { runAgent } from "./agents"
 import { styleGuideForPrompt, povBlockForPrompt, JOURNEY_STAGE_POV, type JourneyStage } from "../blog-style"
-import { formatSourceSection, groupSources } from "./source-format"
+import { formatSourceSection, groupSources, isAllowedSource } from "./source-format"
 
 interface WriteInput {
   projectId: string
   topicId: string
   quality?: "flash" | "pro"
-}
-
-/**
- * 출처 화이트리스트 — STEP 1 grounding sources 후처리.
- *
- * 정책: **허용된 카테고리만 통과** (블랙리스트가 아닌 화이트리스트).
- *  - 정부·공공·학술 (.go.kr / .or.kr / .ac.kr / .gov / .edu)
- *  - 위키 (wikipedia, namu.wiki)
- *  - 주요 뉴스 매체 (한국·글로벌)
- *  - 커뮤니티·Q&A (Reddit, Quora, Stack Exchange)
- *  - 국제기구·학술 논문 DB
- *
- * 그 외 — 호텔/리조트, OTA, 타사 단기임대, 일반 기업·중개업체 사이트 등 전부 제외.
- * 사유: 우리 콘텐츠 출처에 경쟁사·타사 약관 노출 시 법적 리스크 + 브랜드 일관성 훼손.
- */
-const ALLOWED_SOURCE_PATTERNS: RegExp[] = [
-  /* 한국 정부·공공·학술 */
-  /\.go\.kr(\b|\/|$)/i, /\.or\.kr(\b|\/|$)/i, /\.ac\.kr(\b|\/|$)/i,
-  /\.re\.kr(\b|\/|$)/i, /\.mil\.kr(\b|\/|$)/i,
-  /* 글로벌 정부·교육·국제기구 */
-  /\.gov(\b|\/|\.)/i, /\.edu(\b|\/|\.)/i, /\.int(\b|\/|\.)/i,
-  /\boecd\.org/i, /\bun\.org/i, /\bwho\.int/i, /\bworldbank\.org/i, /\bimf\.org/i,
-  /* 위키·백과 */
-  /wikipedia\.org/i, /wikimedia\.org/i, /namu\.wiki/i,
-  /* 한국 주요 뉴스 */
-  /chosun\.com/i, /joongang\.co\.kr/i, /donga\.com/i, /hani\.co\.kr/i,
-  /khan\.co\.kr/i, /hankyung\.com/i, /mk\.co\.kr/i, /mt\.co\.kr/i,
-  /asiae\.co\.kr/i, /yna\.co\.kr/i, /yonhapnews\.co\.kr/i,
-  /sbs\.co\.kr/i, /imbc\.com/i, /jtbc\.co\.kr/i, /kbs\.co\.kr/i,
-  /ohmynews\.com/i, /pressian\.com/i, /seoul\.co\.kr/i, /segye\.com/i,
-  /kmib\.co\.kr/i, /etnews\.com/i, /koreaherald\.com/i, /koreatimes\.co\.kr/i,
-  /news\.naver\.com/i, /news\.daum\.net/i, /v\.daum\.net/i,
-  /newsis\.com/i, /nocutnews\.co\.kr/i, /\bytn\.co\.kr/i, /channela\.com/i,
-  /* 글로벌 뉴스·통신 */
-  /nytimes\.com/i, /\bbbc\.(com|co\.uk)/i, /reuters\.com/i, /bloomberg\.com/i,
-  /\bft\.com/i, /\bwsj\.com/i, /theguardian\.com/i, /economist\.com/i,
-  /apnews\.com/i, /\bcnn\.com/i, /forbes\.com/i, /aljazeera\.com/i,
-  /washingtonpost\.com/i, /npr\.org/i, /scmp\.com/i, /nikkei\.com/i,
-  /* 커뮤니티·Q&A */
-  /reddit\.com/i, /quora\.com/i, /stackexchange\.com/i, /stackoverflow\.com/i,
-  /* 학술·논문 DB */
-  /scholar\.google/i, /jstor\.org/i, /springer\.com/i, /sciencedirect\.com/i,
-  /nature\.com/i, /sciencemag\.org/i, /pubmed/i, /\barxiv\.org/i, /ssrn\.com/i,
-  /dbpia\.co\.kr/i, /riss\.kr/i, /kiss\.kstudy\.com/i,
-]
-
-/** 약관·개인정보 페이지 등 — 화이트리스트 도메인이라도 거부 */
-const HARD_BLOCK_URL_PATTERNS: RegExp[] = [
-  /\/terms/i, /\/privacy/i, /\/policy/i, /\/tos\b/i, /\/agreement/i,
-  /약관/, /이용약관/, /개인정보처리/,
-]
-
-function isAllowedSource(s: { uri?: string; domain?: string; title?: string }): boolean {
-  const url = (s.uri ?? "").toLowerCase()
-  const domain = (s.domain ?? "").toLowerCase()
-  const title = (s.title ?? "").toLowerCase()
-  /* 약관·이용약관 URL 즉시 거부 (화이트리스트 도메인이어도) */
-  if (HARD_BLOCK_URL_PATTERNS.some((re) => re.test(url) || re.test(title))) return false
-  /* 화이트리스트 매칭 — uri/domain/title 셋 중 하나라도 통과 */
-  return ALLOWED_SOURCE_PATTERNS.some((re) => re.test(url) || re.test(domain) || re.test(title))
 }
 
 export async function writeAndStoreDraft(input: WriteInput) {
