@@ -36,6 +36,14 @@ interface SourceCheck {
   overall_note?: string
 }
 
+type FactCheckStatus = "VERIFIED" | "PARTIAL" | "CONTRADICTED" | "UNVERIFIABLE"
+interface FactCheck {
+  claim: string
+  status: FactCheckStatus
+  source?: string
+  note?: string
+}
+
 interface ReviewRecord {
   id: string
   draft_id: string
@@ -48,6 +56,8 @@ interface ReviewRecord {
     categories?: ReviewCategory[]
     source_check?: SourceCheck
     summary?: string
+    fact_checks?: FactCheck[]
+    fact_check_publishers?: string[]
   }
 }
 
@@ -199,6 +209,8 @@ export default function ReviewPage() {
   const categories = review?.items?.categories ?? []
   const sourceCheck = review?.items?.source_check
   const summary = review?.items?.summary
+  const factChecks = review?.items?.fact_checks ?? []
+  const factCheckPublishers = review?.items?.fact_check_publishers ?? []
   const allItems = categories.flatMap((c) => c.items)
   const okCount = allItems.filter((i) => i.ok).length
   const totalCount = allItems.length
@@ -496,6 +508,11 @@ export default function ReviewPage() {
                   )
                 })}
 
+                {/* Fact-check 카드 — STEP 1 grounded 검증 결과 (검수 UI 전용, 본문에 노출 X) */}
+                {factChecks.length > 0 && (
+                  <FactCheckBlock checks={factChecks} publishers={factCheckPublishers} />
+                )}
+
                 {/* 출처 체크 */}
                 {sourceCheck && (
                   <div
@@ -730,6 +747,173 @@ function CheckItemRow({ item }: { item: ReviewItem }) {
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+/* ─── Fact-check 블록 — Google Search 검증 결과 카드 ───────────
+   ※ 검수자 전용 UI. 여기 표시되는 모든 텍스트는 reviews.items.fact_checks
+     에서만 나오며, drafts.body_markdown 에는 절대 흘러가지 않음. */
+
+const STATUS_META: Record<FactCheckStatus, {
+  emoji: string
+  label: string
+  bg: string
+  border: string
+  fg: string
+  iconBg: string
+  order: number
+}> = {
+  VERIFIED:     { emoji: "✅", label: "검증됨",      bg: "#ecfdf5", border: "#a7f3d0", fg: "#047857", iconBg: "#d1fae5", order: 1 },
+  PARTIAL:      { emoji: "⚠️", label: "부분 일치",   bg: "#fffbeb", border: "#fde68a", fg: "#b45309", iconBg: "#fef3c7", order: 2 },
+  CONTRADICTED: { emoji: "❌", label: "출처와 모순", bg: "#fef2f2", border: "#fecaca", fg: "#b91c1c", iconBg: "#fee2e2", order: 3 },
+  UNVERIFIABLE: { emoji: "❓", label: "검증 불가",   bg: "#f3f4f6", border: "#e5e7eb", fg: "#4b5563", iconBg: "#e5e7eb", order: 4 },
+}
+
+function FactCheckBlock({
+  checks,
+  publishers,
+}: {
+  checks: FactCheck[]
+  publishers: string[]
+}) {
+  /* status 별 그룹화 (정렬: VERIFIED → PARTIAL → CONTRADICTED → UNVERIFIABLE) */
+  const groups = (Object.keys(STATUS_META) as FactCheckStatus[])
+    .sort((a, b) => STATUS_META[a].order - STATUS_META[b].order)
+    .map((status) => ({
+      status,
+      meta: STATUS_META[status],
+      items: checks.filter((c) => c.status === status),
+    }))
+    .filter((g) => g.items.length > 0)
+
+  const summary = groups.map((g) => `${g.meta.emoji} ${g.meta.label} ${g.items.length}`).join(" · ")
+
+  return (
+    <div
+      style={{
+        marginTop: 12,
+        marginBottom: 12,
+        padding: "14px 16px",
+        background: "linear-gradient(180deg, #eef2ff 0%, #f5f3ff 100%)",
+        border: "1px solid #c7d2fe",
+        borderRadius: "var(--r-md)",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+        <span style={{ fontSize: 14 }}>🔍</span>
+        <div style={{ fontSize: 13, fontWeight: 700, color: "#3730a3" }}>
+          AI 사실 검증
+          <span style={{ fontSize: 10.5, color: "#6366f1", fontWeight: 500, marginLeft: 6 }}>
+            · Google Search 로 본문 주장 재검증 (검수자만 보임)
+          </span>
+        </div>
+        <span
+          className="bchip"
+          style={{
+            marginLeft: "auto",
+            background: "white",
+            color: "#3730a3",
+            fontSize: 10.5,
+            border: "1px solid #c7d2fe",
+          }}
+        >
+          {checks.length}건
+        </span>
+      </div>
+
+      {summary && (
+        <div style={{ fontSize: 11.5, color: "#4338ca", marginBottom: 10, fontWeight: 600 }}>
+          {summary}
+        </div>
+      )}
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {groups.map((g) => (
+          <div key={g.status}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                marginBottom: 5,
+                fontSize: 11.5,
+                fontWeight: 700,
+                color: g.meta.fg,
+              }}
+            >
+              <span>{g.meta.emoji}</span>
+              <span>{g.meta.label}</span>
+              <span style={{ color: "var(--text-muted)", fontWeight: 500 }}>· {g.items.length}건</span>
+            </div>
+            {g.items.map((item, i) => (
+              <FactCheckRow key={`${g.status}-${i}`} item={item} meta={g.meta} />
+            ))}
+          </div>
+        ))}
+      </div>
+
+      {publishers.length > 0 && (
+        <div
+          style={{
+            marginTop: 12,
+            paddingTop: 10,
+            borderTop: "1px dashed #c7d2fe",
+            fontSize: 11,
+            color: "#4338ca",
+          }}
+        >
+          <b style={{ marginRight: 6 }}>검증에 참고한 매체:</b>
+          {publishers.join(" · ")}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function FactCheckRow({
+  item,
+  meta,
+}: {
+  item: FactCheck
+  meta: (typeof STATUS_META)[FactCheckStatus]
+}) {
+  return (
+    <div
+      style={{
+        padding: "8px 10px",
+        background: meta.bg,
+        border: `1px solid ${meta.border}`,
+        borderRadius: 6,
+        marginBottom: 5,
+        fontSize: 12,
+        lineHeight: 1.55,
+      }}
+    >
+      <div style={{ color: meta.fg, fontWeight: 600 }}>
+        “{item.claim}”
+      </div>
+      {item.source && (
+        <div style={{ fontSize: 11, color: meta.fg, marginTop: 3, opacity: 0.85 }}>
+          출처: {item.source}
+        </div>
+      )}
+      {item.note && (
+        <div
+          style={{
+            fontSize: 11,
+            color: meta.fg,
+            marginTop: 4,
+            padding: "4px 8px",
+            background: "white",
+            border: `1px solid ${meta.border}`,
+            borderRadius: 4,
+            lineHeight: 1.5,
+          }}
+        >
+          📝 {item.note}
+        </div>
+      )}
     </div>
   )
 }
