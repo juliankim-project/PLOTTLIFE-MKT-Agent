@@ -284,7 +284,37 @@ export default function ContentsPage() {
     }
   }
 
-  /* applyPublishSetting 은 옛 채널 그리드 모달용 — 새 모달은 다음 PR 에서 어드민 API 호출 연결 */
+  /** 발행세팅 모달 → 어드민 등록 (mock 또는 실제 호출) */
+  const handleDabPublish = async (input: {
+    category: import("@/lib/dab/category").DabCategory
+    status: "DRAFT" | "PUBLISHED"
+  }) => {
+    if (!modalId) return
+    setError(null)
+    try {
+      const j = await safeFetchJson<{
+        ok: boolean
+        error?: string
+        metadata?: DraftItem["metadata"]
+      }>("/api/dab/publish", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ draftId: modalId, category: input.category, status: input.status }),
+      })
+      if (!j.ok || !j.metadata) throw new Error(j.error ?? "어드민 등록 실패")
+
+      /* optimistic 업데이트 — metadata 반영 */
+      const nextContents = contents.map((d) =>
+        d.id === modalId ? { ...d, metadata: j.metadata as DraftItem["metadata"] } : d
+      )
+      setContents(nextContents)
+      syncCacheNow(nextContents, trashed)
+      setModalId(null)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "어드민 등록 실패")
+      throw e // 모달이 busy 상태 풀게 throw
+    }
+  }
 
   return (
     <div className="bpage fade-up">
@@ -748,7 +778,7 @@ export default function ContentsPage() {
         <PublishSettingModal
           draft={currentModal}
           onClose={() => setModalId(null)}
-          /* onSubmit 은 다음 PR 에서 실제 어드민 API 호출 연결 */
+          onSubmit={handleDabPublish}
         />
       )}
 
