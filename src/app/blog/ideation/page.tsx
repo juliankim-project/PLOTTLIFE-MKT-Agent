@@ -128,6 +128,13 @@ function IdeationPage() {
     model: string
     durationMs: number
   } | null>(null)
+  /* Phase 3 grounded — 이번 run 의 시장 신호 (UI 헤더에서만 사용, ideas 본문 X) */
+  const [marketSignals, setMarketSignals] = useState<{
+    text: string
+    publishers: string[]
+    generated_at: string
+  } | null>(null)
+  const [signalsExpanded, setSignalsExpanded] = useState(false)
 
   /* ─── 매트릭스 필터 ─────────────────────────────────────── */
   const [sortMode, setSortMode] = useState<"fit" | "volume" | "recent">("fit")
@@ -250,6 +257,11 @@ function IdeationPage() {
           model: string
           durationMs: number
           ideas: DbIdea[]
+          groundedSignals?: {
+            text: string
+            publishers: string[]
+            generated_at: string
+          } | null
         }
         error?: string
       }>("/api/ideation/run", {
@@ -266,6 +278,7 @@ function IdeationPage() {
         model: j.result.model,
         durationMs: j.result.durationMs,
       })
+      setMarketSignals(j.result.groundedSignals ?? null)
       const newIdeas = j.result.ideas
       setIdeas(newIdeas)
       setSelectedIds(new Set(newIdeas.map((i) => i.id)))
@@ -848,6 +861,73 @@ function IdeationPage() {
                 </button>
               )}
             </div>
+
+            {/* Phase 3 grounded — 이번 run 의 시장 신호 (검색 기반).
+                ※ ideas 본문엔 안 들어감, 이 헤더 박스에서만 검수자 참고용 */}
+            {ideas.length > 0 && marketSignals && (
+              <div
+                style={{
+                  margin: "12px 14px 0",
+                  padding: "10px 12px",
+                  background: "linear-gradient(180deg, #eef2ff 0%, #f5f3ff 100%)",
+                  border: "1px solid #c7d2fe",
+                  borderRadius: 8,
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() => setSignalsExpanded((v) => !v)}
+                  style={{
+                    width: "100%",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    background: "transparent",
+                    border: 0,
+                    cursor: "pointer",
+                    padding: 0,
+                    textAlign: "left",
+                  }}
+                >
+                  <span style={{ fontSize: 14 }}>🔥</span>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: "#3730a3" }}>
+                      Google Search 시장 신호 반영됨
+                      <span style={{ fontSize: 10.5, color: "#6366f1", fontWeight: 500, marginLeft: 6 }}>
+                        · 이번 30개 주제 생성 시 자동 참고
+                      </span>
+                    </div>
+                    {marketSignals.publishers.length > 0 && (
+                      <div style={{ fontSize: 10.5, color: "#4338ca", marginTop: 2 }}>
+                        매체: {marketSignals.publishers.join(" · ")}
+                      </div>
+                    )}
+                  </div>
+                  <span style={{ fontSize: 11, color: "#4338ca" }}>
+                    {signalsExpanded ? "접기 ▲" : "펼치기 ▼"}
+                  </span>
+                </button>
+                {signalsExpanded && (
+                  <div
+                    style={{
+                      marginTop: 8,
+                      padding: "8px 10px",
+                      background: "white",
+                      border: "1px solid #ddd6fe",
+                      borderRadius: 6,
+                      fontSize: 11.5,
+                      color: "#4338ca",
+                      lineHeight: 1.7,
+                      whiteSpace: "pre-wrap",
+                      maxHeight: 200,
+                      overflowY: "auto",
+                    }}
+                  >
+                    {marketSignals.text}
+                  </div>
+                )}
+              </div>
+            )}
 
             {ideas.length > 0 && (
               <div className="matrix-toolbar">
