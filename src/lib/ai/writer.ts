@@ -15,6 +15,66 @@ interface WriteInput {
   quality?: "flash" | "pro"
 }
 
+/**
+ * 출처 화이트리스트 — STEP 1 grounding sources 후처리.
+ *
+ * 정책: **허용된 카테고리만 통과** (블랙리스트가 아닌 화이트리스트).
+ *  - 정부·공공·학술 (.go.kr / .or.kr / .ac.kr / .gov / .edu)
+ *  - 위키 (wikipedia, namu.wiki)
+ *  - 주요 뉴스 매체 (한국·글로벌)
+ *  - 커뮤니티·Q&A (Reddit, Quora, Stack Exchange)
+ *  - 국제기구·학술 논문 DB
+ *
+ * 그 외 — 호텔/리조트, OTA, 타사 단기임대, 일반 기업·중개업체 사이트 등 전부 제외.
+ * 사유: 우리 콘텐츠 출처에 경쟁사·타사 약관 노출 시 법적 리스크 + 브랜드 일관성 훼손.
+ */
+const ALLOWED_SOURCE_PATTERNS: RegExp[] = [
+  /* 한국 정부·공공·학술 */
+  /\.go\.kr(\b|\/|$)/i, /\.or\.kr(\b|\/|$)/i, /\.ac\.kr(\b|\/|$)/i,
+  /\.re\.kr(\b|\/|$)/i, /\.mil\.kr(\b|\/|$)/i,
+  /* 글로벌 정부·교육·국제기구 */
+  /\.gov(\b|\/|\.)/i, /\.edu(\b|\/|\.)/i, /\.int(\b|\/|\.)/i,
+  /\boecd\.org/i, /\bun\.org/i, /\bwho\.int/i, /\bworldbank\.org/i, /\bimf\.org/i,
+  /* 위키·백과 */
+  /wikipedia\.org/i, /wikimedia\.org/i, /namu\.wiki/i,
+  /* 한국 주요 뉴스 */
+  /chosun\.com/i, /joongang\.co\.kr/i, /donga\.com/i, /hani\.co\.kr/i,
+  /khan\.co\.kr/i, /hankyung\.com/i, /mk\.co\.kr/i, /mt\.co\.kr/i,
+  /asiae\.co\.kr/i, /yna\.co\.kr/i, /yonhapnews\.co\.kr/i,
+  /sbs\.co\.kr/i, /imbc\.com/i, /jtbc\.co\.kr/i, /kbs\.co\.kr/i,
+  /ohmynews\.com/i, /pressian\.com/i, /seoul\.co\.kr/i, /segye\.com/i,
+  /kmib\.co\.kr/i, /etnews\.com/i, /koreaherald\.com/i, /koreatimes\.co\.kr/i,
+  /news\.naver\.com/i, /news\.daum\.net/i, /v\.daum\.net/i,
+  /newsis\.com/i, /nocutnews\.co\.kr/i, /\bytn\.co\.kr/i, /channela\.com/i,
+  /* 글로벌 뉴스·통신 */
+  /nytimes\.com/i, /\bbbc\.(com|co\.uk)/i, /reuters\.com/i, /bloomberg\.com/i,
+  /\bft\.com/i, /\bwsj\.com/i, /theguardian\.com/i, /economist\.com/i,
+  /apnews\.com/i, /\bcnn\.com/i, /forbes\.com/i, /aljazeera\.com/i,
+  /washingtonpost\.com/i, /npr\.org/i, /scmp\.com/i, /nikkei\.com/i,
+  /* 커뮤니티·Q&A */
+  /reddit\.com/i, /quora\.com/i, /stackexchange\.com/i, /stackoverflow\.com/i,
+  /* 학술·논문 DB */
+  /scholar\.google/i, /jstor\.org/i, /springer\.com/i, /sciencedirect\.com/i,
+  /nature\.com/i, /sciencemag\.org/i, /pubmed/i, /\barxiv\.org/i, /ssrn\.com/i,
+  /dbpia\.co\.kr/i, /riss\.kr/i, /kiss\.kstudy\.com/i,
+]
+
+/** 약관·개인정보 페이지 등 — 화이트리스트 도메인이라도 거부 */
+const HARD_BLOCK_URL_PATTERNS: RegExp[] = [
+  /\/terms/i, /\/privacy/i, /\/policy/i, /\/tos\b/i, /\/agreement/i,
+  /약관/, /이용약관/, /개인정보처리/,
+]
+
+function isAllowedSource(s: { uri?: string; domain?: string; title?: string }): boolean {
+  const url = (s.uri ?? "").toLowerCase()
+  const domain = (s.domain ?? "").toLowerCase()
+  const title = (s.title ?? "").toLowerCase()
+  /* 약관·이용약관 URL 즉시 거부 (화이트리스트 도메인이어도) */
+  if (HARD_BLOCK_URL_PATTERNS.some((re) => re.test(url) || re.test(title))) return false
+  /* 화이트리스트 매칭 — uri/domain/title 셋 중 하나라도 통과 */
+  return ALLOWED_SOURCE_PATTERNS.some((re) => re.test(url) || re.test(domain) || re.test(title))
+}
+
 export async function writeAndStoreDraft(input: WriteInput) {
   const db = supabaseAdmin()
 
@@ -70,10 +130,20 @@ export async function writeAndStoreDraft(input: WriteInput) {
 주요 키워드: ${topic.primary_keyword ?? "단기임대"}
 타겟: ${personaLabel}
 
-검색해야 할 토픽:
-- "${topic.primary_keyword ?? topic.title} 2026" — 최신 시장·정책
-- 한국 주택임대차보호법·외국인등록·비자 관련 최근 개정 (2024~2026)
-- 인용할 만한 통계·시세·기관 공지
+✅ 검색·인용 가능한 출처 (이것들만)
+- 정부·공공기관 (.go.kr / .or.kr): 출입국·외국인청, 법무부, 국토교통부, 행정안전부, 교육부, 통계청, 한국부동산원, 한국임대차분쟁조정위원회, 한국관광공사
+- 법령 DB: law.go.kr, easylaw.go.kr (주택임대차보호법, 출입국관리법 등)
+- 학술·연구 (.ac.kr / .re.kr): 대학·국책연구원 발표, 학회 논문
+- 위키: Wikipedia, 나무위키
+- 주요 뉴스: 조선·중앙·동아·한겨레·연합뉴스·한경·매경·KBS·SBS·MBC·JTBC, NYT·BBC·Reuters 등
+- 커뮤니티·Q&A: Reddit, Quora (외국인 유학생·체류자 실제 경험)
+- 국제기구: OECD, UN, WHO, 세계은행
+
+❌ 검색·인용 절대 금지 (법적 리스크 + 브랜드 일관성)
+- 호텔·리조트 체인 (켄싱턴·롯데·신라·메리어트·힐튼 등)
+- 숙박 OTA (야놀자·여기어때·에어비앤비·부킹닷컴·아고다·익스피디아 등)
+- 타사 단기임대·렌탈 서비스 / 부동산 중개업체 광고·블로그
+- 일반 기업 사이트의 약관·이용약관·개인정보처리방침 페이지
 
 각 사실은 한 문장씩, 출처 기관·법령·연도와 함께. 5~8줄로 압축.`
 
@@ -92,7 +162,14 @@ export async function writeAndStoreDraft(input: WriteInput) {
       modelOverride: "gemini-2.5-flash",
     })
     factsText = factResult.text
-    factSources = factResult.sources ?? []
+    /* 출처 화이트리스트 적용 — 정부·공공·뉴스·위키·커뮤니티만 통과 */
+    const rawSources = factResult.sources ?? []
+    factSources = rawSources.filter((s) => isAllowedSource(s))
+    if (rawSources.length !== factSources.length) {
+      console.log(
+        `[writer] sources filtered (whitelist): ${rawSources.length} → ${factSources.length}`
+      )
+    }
   } catch {
     /* fact step 실패해도 본문은 진행 */
   }
@@ -126,6 +203,12 @@ ${styleGuideForPrompt({ withImageSlots: true })}
 6. 스타일 가이드의 **필수 준수 10가지** 와 **금지어 리스트** 를 반드시 지켜라
 7. 전체 ${topic.brief ?? "3000~4000자"} 범위 유지
 8. **본문에 외부 URL·링크 삽입 절대 금지** — 출처는 글 끝에 자동 첨부됨. 본문에서는 "(2026년 출입국·외국인청 기준)" 같이 기관명+시기 텍스트로만 인용
+9. **타사·경쟁사 브랜드명·약관·서비스명 인용 절대 금지** (콜아웃·표·체크리스트·본문·참고 출처 어디에도)
+   - ❌ 호텔/리조트 체인 (켄싱턴, 롯데호텔, 신라호텔, 메리어트, 힐튼 등)
+   - ❌ 숙박 OTA·플랫폼 (야놀자, 여기어때, 에어비앤비, 부킹닷컴, 아고다 등)
+   - ❌ 타사 단기임대 서비스명 / 부동산 중개업체 / 개별 호스트
+   - ✅ **인용 가능 출처는 다음만** — 공식 기관·법령(출입국·외국인청, 법무부, 임대차분쟁조정위원회, 한국부동산원, 통계청 등) · 주요 뉴스 · 위키(나무위키, Wikipedia) · 커뮤니티(Reddit, Quora 등 실제 경험)
+   - 비교 대상이 필요할 때는 "기숙사", "호텔", "고시원", "원룸 장기임대" 처럼 **카테고리·일반명사**로만 표현
 
 [🔍 Google Search Grounding — 반드시 활용]
 이 호출은 Google Search Grounding이 **활성화** 되어 있습니다.
