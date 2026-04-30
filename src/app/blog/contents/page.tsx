@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { Icon, PageHeader } from "../_ui"
 import { readCache, writeCache } from "../_lib/cache"
-import { PublishSettingModal } from "./_components/publish-modal"
+import { PublishSettingModal, ToggleSwitch } from "./_components/publish-modal"
 import { pickDabCategory } from "@/lib/dab/category"
 
 interface DraftItem {
@@ -284,12 +284,17 @@ export default function ContentsPage() {
     }
   }
 
-  /** 발행세팅 모달 → 어드민 등록 (mock 또는 실제 호출) */
-  const handleDabPublish = async (input: {
-    category: import("@/lib/dab/category").DabCategory
-    status: "DRAFT" | "PUBLISHED"
-  }) => {
-    if (!modalId) return
+  /** row 토글 → 어드민 발행 상태 변경 (게시 ON ↔ OFF) */
+  const [togglingId, setTogglingId] = useState<string | null>(null)
+  const handleToggleDabPublish = async (draft: DraftItem, nextOn: boolean) => {
+    /* 카테고리는 metadata 우선 — 없으면 자동 매핑 */
+    const category = (draft.metadata?.dab_category as import("@/lib/dab/category").DabCategory) ??
+      pickDabCategory({
+        title: draft.title,
+        primaryKeyword: draft.primary_keyword,
+        secondaryKeywords: draft.secondary_keywords,
+      })
+    setTogglingId(draft.id)
     setError(null)
     try {
       const j = await safeFetchJson<{
@@ -299,20 +304,24 @@ export default function ContentsPage() {
       }>("/api/dab/publish", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ draftId: modalId, category: input.category, status: input.status }),
+        body: JSON.stringify({
+          draftId: draft.id,
+          category,
+          status: nextOn ? "PUBLISHED" : "DRAFT",
+        }),
       })
-      if (!j.ok || !j.metadata) throw new Error(j.error ?? "어드민 등록 실패")
+      if (!j.ok || !j.metadata) throw new Error(j.error ?? "어드민 발행 실패")
 
-      /* optimistic 업데이트 — metadata 반영 */
+      /* optimistic 업데이트 */
       const nextContents = contents.map((d) =>
-        d.id === modalId ? { ...d, metadata: j.metadata as DraftItem["metadata"] } : d
+        d.id === draft.id ? { ...d, metadata: j.metadata as DraftItem["metadata"] } : d
       )
       setContents(nextContents)
       syncCacheNow(nextContents, trashed)
-      setModalId(null)
     } catch (e) {
-      setError(e instanceof Error ? e.message : "어드민 등록 실패")
-      throw e // 모달이 busy 상태 풀게 throw
+      setError(e instanceof Error ? e.message : "어드민 발행 실패")
+    } finally {
+      setTogglingId(null)
     }
   }
 
@@ -543,7 +552,7 @@ export default function ContentsPage() {
             <div>썸네일</div>
             <div>제목 / 작성자</div>
             <div>카테고리</div>
-            <div>상태</div>
+            <div>어드민 발행</div>
             <div>업데이트</div>
             <div style={{ textAlign: "right" }}>액션</div>
           </div>
@@ -691,21 +700,42 @@ export default function ContentsPage() {
                   >
                     {dabCategory}
                   </span>
-                  {/* 상태 (대브 등록 상태 기준) */}
-                  <span
+                  {/* 어드민 발행 토글 — ON=PUBLISHED, OFF=DRAFT/미등록 */}
+                  <div
                     style={{
-                      background: dabSt.bg,
-                      color: dabSt.color,
-                      border: `1px solid ${dabSt.border}`,
-                      fontSize: 10.5,
-                      fontWeight: 700,
-                      padding: "3px 9px",
-                      borderRadius: 999,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
                       justifySelf: "start",
                     }}
                   >
-                    {dabStatus === "PUBLISHED" ? "🟢 " : ""}{dabSt.label}
-                  </span>
+                    <ToggleSwitch
+                      on={dabStatus === "PUBLISHED"}
+                      busy={togglingId === d.id}
+                      onToggle={() =>
+                        handleToggleDabPublish(d, dabStatus !== "PUBLISHED")
+                      }
+                      label={`${d.title} 어드민 발행 토글`}
+                    />
+                    <span
+                      style={{
+                        fontSize: 10.5,
+                        fontWeight: 600,
+                        color:
+                          dabStatus === "PUBLISHED"
+                            ? "#047857"
+                            : dabStatus === "DRAFT"
+                            ? "var(--text-muted)"
+                            : "var(--text-muted)",
+                      }}
+                    >
+                      {dabStatus === "PUBLISHED"
+                        ? "🟢 게시 중"
+                        : dabStatus === "DRAFT"
+                        ? "OFF (임시)"
+                        : "OFF"}
+                    </span>
+                  </div>
                   {/* 업데이트 */}
                   <span style={{ fontSize: 11.5, color: "var(--text-muted)" }}>
                     {new Date(d.updated_at).toLocaleDateString("ko-KR", {
@@ -773,12 +803,11 @@ export default function ContentsPage() {
         )}
       </div>
 
-      {/* 발행 세팅 모달 — 플라트라이프 어드민 단일 채널 */}
+      {/* 발행 미리보기 모달 — 어드민/web 화면 미리보기만 */}
       {currentModal && (
         <PublishSettingModal
           draft={currentModal}
           onClose={() => setModalId(null)}
-          onSubmit={handleDabPublish}
         />
       )}
 
@@ -786,6 +815,9 @@ export default function ContentsPage() {
         :global(.content-row:hover) {
           background: var(--bg-subtle);
         }
+      `}</style>
+      <style jsx global>{`
+        @keyframes spin { to { transform: rotate(360deg); } }
       `}</style>
     </div>
   )

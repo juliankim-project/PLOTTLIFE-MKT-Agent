@@ -1,18 +1,16 @@
 "use client"
 
 /**
- * 발행 세팅 모달 — 플라트라이프 어드민 단일 채널 전용.
+ * 발행 미리보기 모달 — 플라트라이프 어드민 단일 채널 전용.
  *
- * 동작:
- *  1) 카테고리 자동 매핑 결과 표시 (사용자가 변경 가능)
- *  2) 어드민 콘텐츠 매니저에 어떻게 보일지 row 미리보기
- *  3) 발행됐을 때 web /blog/[id] 화면 미리보기
- *  4) 게시 토글 — 디폴트 OFF (DRAFT 로 등록)
- *  5) 등록하기 버튼 — 다음 PR 에서 실제 API 호출 연결
+ * ※ 카테고리 선택 / 발행 토글은 콘텐츠 관리 row 의 칼럼에서 직접 조작.
+ *   이 모달은 **순수 미리보기 전용**:
+ *    1) 어드민 콘텐츠 매니저에 어떻게 보일지 row 미리보기
+ *    2) web /blog/[id] 화면 미리보기 (현재 발행 상태 기준)
  */
 
-import { useMemo, useState } from "react"
-import { DAB_CATEGORIES, type DabCategory, pickDabCategoryWithReason } from "@/lib/dab/category"
+import { useMemo } from "react"
+import { type DabCategory, pickDabCategory } from "@/lib/dab/category"
 import { mapDraftToDabInput } from "@/lib/dab/mapping"
 
 interface DraftLite {
@@ -41,18 +39,14 @@ interface Props {
   draft: DraftLite
   topic?: TopicLite | null
   onClose: () => void
-  /** "DRAFT" 또는 "PUBLISHED" 상태로 어드민에 등록 — 다음 PR 에서 실제 API call. */
-  onSubmit?: (input: {
-    category: DabCategory
-    status: "DRAFT" | "PUBLISHED"
-  }) => Promise<void>
 }
 
-export function PublishSettingModal({ draft, topic, onClose, onSubmit }: Props) {
-  /* 자동 매핑 결과 + 매핑 사유 (UI 디버그용) */
-  const auto = useMemo(
+export function PublishSettingModal({ draft, topic, onClose }: Props) {
+  /* 카테고리 — metadata 우선, 없으면 자동 매핑 (read-only) */
+  const category: DabCategory = useMemo(
     () =>
-      pickDabCategoryWithReason({
+      (draft.metadata?.dab_category as DabCategory) ??
+      pickDabCategory({
         title: draft.title,
         primaryKeyword: draft.primary_keyword,
         secondaryKeywords: draft.secondary_keywords ?? null,
@@ -61,13 +55,8 @@ export function PublishSettingModal({ draft, topic, onClose, onSubmit }: Props) 
     [draft, topic]
   )
 
-  const [category, setCategory] = useState<DabCategory>(
-    (draft.metadata?.dab_category as DabCategory) ?? auto.category
-  )
-  const [publishOn, setPublishOn] = useState<boolean>(
-    draft.metadata?.dab_status === "PUBLISHED"
-  )
-  const [busy, setBusy] = useState(false)
+  /* 발행 상태 — metadata 기준 (read-only) */
+  const publishOn = draft.metadata?.dab_status === "PUBLISHED"
 
   /* 어드민에 보낼 페이로드 (미리보기용) */
   const dabInput = useMemo(
@@ -90,15 +79,6 @@ export function PublishSettingModal({ draft, topic, onClose, onSubmit }: Props) 
   )
 
   const isAlreadyRegistered = !!draft.metadata?.dab_blog_id
-
-  const handleSubmit = async () => {
-    setBusy(true)
-    try {
-      await onSubmit?.({ category, status: publishOn ? "PUBLISHED" : "DRAFT" })
-    } finally {
-      setBusy(false)
-    }
-  }
 
   return (
     <div
@@ -161,7 +141,7 @@ export function PublishSettingModal({ draft, topic, onClose, onSubmit }: Props) 
                 marginBottom: 4,
               }}
             >
-              발행 세팅 · 플라트라이프 어드민
+              발행 미리보기 · 플라트라이프 어드민
             </div>
             <div
               style={{
@@ -203,86 +183,22 @@ export function PublishSettingModal({ draft, topic, onClose, onSubmit }: Props) 
           </button>
         </div>
 
-        {/* 바디 */}
+        {/* 바디 — 미리보기 2개만 (카테고리/토글은 콘텐츠 관리 칼럼으로 빠짐) */}
         <div style={{ padding: "20px 24px", display: "flex", flexDirection: "column", gap: 22 }}>
-          {/* 1. 카테고리 */}
+          {/* 어드민 콘텐츠 매니저 미리보기 */}
           <section>
-            <SectionLabel num="1" label="카테고리" right={
-              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
-                자동 매핑: <b style={{ color: "var(--brand-700)" }}>{auto.category}</b>{" "}
-                <span style={{ color: "var(--text-muted)", fontWeight: 500 }}>
-                  ({auto.reason === "keyword" ? "키워드 매칭" : auto.reason === "journey_stage" ? "여정 단계" : "디폴트"})
-                </span>
-              </span>
-            } />
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 6 }}>
-              {DAB_CATEGORIES.map((c) => (
-                <button
-                  key={c}
-                  type="button"
-                  onClick={() => setCategory(c)}
-                  style={{
-                    padding: "9px 8px",
-                    borderRadius: 8,
-                    border: `1.5px solid ${category === c ? "var(--brand-500)" : "var(--border-default)"}`,
-                    background: category === c ? "var(--brand-50)" : "white",
-                    color: category === c ? "var(--brand-800, #3730a3)" : "var(--text-primary)",
-                    fontSize: 12.5,
-                    fontWeight: category === c ? 700 : 500,
-                    cursor: "pointer",
-                    transition: "all 0.12s",
-                  }}
-                >
-                  {c}
-                </button>
-              ))}
-            </div>
-          </section>
-
-          {/* 2. 게시 토글 */}
-          <section>
-            <SectionLabel num="2" label="게시 상태" />
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 12,
-                padding: "12px 14px",
-                border: "1px solid var(--border-default)",
-                borderRadius: 10,
-                background: publishOn ? "#ecfdf5" : "var(--bg-subtle)",
-                borderColor: publishOn ? "#a7f3d0" : "var(--border-default)",
-                transition: "all 0.15s",
-              }}
-            >
-              <ToggleSwitch on={publishOn} onToggle={() => setPublishOn((v) => !v)} />
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: publishOn ? "#047857" : "var(--text-primary)" }}>
-                  {publishOn ? "🟢 게시 중 (PUBLISHED)" : "⚪️ 임시저장 (DRAFT)"}
-                </div>
-                <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 2 }}>
-                  {publishOn
-                    ? "어드민 등록과 동시에 web 에 즉시 노출됩니다"
-                    : "어드민 콘텐츠 매니저에만 등록 (web 노출 X). 나중에 토글 ON 으로 게시"}
-                </div>
-              </div>
-            </div>
-          </section>
-
-          {/* 3. 어드민 콘텐츠 매니저 미리보기 */}
-          <section>
-            <SectionLabel num="3" label="어드민 콘텐츠 매니저에 이렇게 보입니다" />
+            <SectionLabel num="1" label="어드민 콘텐츠 매니저에 이렇게 보입니다" />
             <AdminRowPreview input={dabInput} draft={draft} />
           </section>
 
-          {/* 4. web 발행 미리보기 */}
+          {/* web 발행 미리보기 */}
           <section>
-            <SectionLabel num="4" label={publishOn ? "web 화면 미리보기 (게시 ON)" : "web 화면 미리보기 (게시 OFF — 노출 X)"} />
+            <SectionLabel num="2" label={publishOn ? "web 화면 미리보기 (게시 중)" : "web 화면 미리보기 (게시 OFF — 노출 X)"} />
             <WebBlogPreview input={dabInput} draft={draft} disabled={!publishOn} />
           </section>
         </div>
 
-        {/* 푸터 */}
+        {/* 푸터 — 닫기만 */}
         <div
           style={{
             padding: "14px 24px",
@@ -290,54 +206,28 @@ export function PublishSettingModal({ draft, topic, onClose, onSubmit }: Props) 
             display: "flex",
             gap: 8,
             alignItems: "center",
-            justifyContent: "flex-end",
+            justifyContent: "space-between",
             background: "#fafbff",
           }}
         >
+          <div style={{ fontSize: 11.5, color: "var(--text-muted)" }}>
+            카테고리·발행 토글은 <b>콘텐츠 관리 행</b>에서 직접 조작하세요
+          </div>
           <button
             type="button"
             onClick={onClose}
-            disabled={busy}
             style={{
-              background: "transparent",
-              border: 0,
-              padding: "8px 14px",
-              borderRadius: 8,
-              fontSize: 12.5,
-              fontWeight: 600,
-              color: "var(--text-secondary)",
-              cursor: busy ? "not-allowed" : "pointer",
-            }}
-          >
-            닫기
-          </button>
-          <button
-            type="button"
-            onClick={handleSubmit}
-            disabled={busy || !onSubmit}
-            style={{
-              background:
-                busy || !onSubmit
-                  ? "#cbd5e1"
-                  : publishOn
-                  ? "linear-gradient(135deg, #047857 0%, #065f46 100%)"
-                  : "linear-gradient(135deg, var(--brand-600) 0%, var(--brand-700) 100%)",
+              background: "var(--brand-600)",
               color: "white",
               border: 0,
-              padding: "10px 18px",
+              padding: "9px 18px",
               borderRadius: 8,
               fontSize: 13,
               fontWeight: 700,
-              cursor: busy || !onSubmit ? "not-allowed" : "pointer",
-              boxShadow: busy || !onSubmit ? "none" : "0 4px 12px rgba(99,102,241,0.25)",
+              cursor: "pointer",
             }}
-            title={!onSubmit ? "다음 PR 에서 실제 등록 연결 예정" : undefined}
           >
-            {busy
-              ? "등록 중…"
-              : publishOn
-              ? "🚀 어드민에 등록 + 게시"
-              : "📥 어드민에 임시저장 등록"}
+            닫기
           </button>
         </div>
       </div>
@@ -384,7 +274,27 @@ function SectionLabel({
   )
 }
 
-function ToggleSwitch({ on, onToggle }: { on: boolean; onToggle: () => void }) {
+export function ToggleSwitch({ on, onToggle, busy = false, label }: { on: boolean; onToggle: () => void; busy?: boolean; label?: string }) {
+  if (busy) {
+    /* 토글이 변경 중일 때는 작은 스피너로 대체 */
+    return (
+      <span
+        aria-label={label ?? "처리 중"}
+        style={{
+          display: "inline-block",
+          width: 18,
+          height: 18,
+          border: "2px solid var(--brand-200)",
+          borderTopColor: "var(--brand-600)",
+          borderRadius: "50%",
+          animation: "spin 0.7s linear infinite",
+        }}
+      />
+    )
+  }
+  return _ToggleSwitch({ on, onToggle, label })
+}
+function _ToggleSwitch({ on, onToggle, label }: { on: boolean; onToggle: () => void; label?: string }) {
   return (
     <button
       type="button"
