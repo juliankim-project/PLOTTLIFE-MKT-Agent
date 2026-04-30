@@ -22,6 +22,8 @@ interface GeneratedBrief {
   primary_keyword: string
   secondary_keywords: string[]
   target_kpi: "conversion" | "traffic" | "dwell_time"
+  /** 본문 구조 템플릿 — steps(가이드) / compare(비교·추천) / story(스토리·Q&A) */
+  template?: "steps" | "compare" | "story"
   tone_guide: string
   outline: Array<{
     heading: string
@@ -93,9 +95,28 @@ ${styleGuide}
 
 [요구사항]
 이 주제로 실제 블로그 본문을 작성할 Copywriter 에이전트에게 넘길 상세 브리프를 JSON 으로 작성해줘.
-아웃라인은 H2 3~4개 + 각 H2 하위 H3 0~2개 수준으로 **간결하게**, 플라트 블로그 스타일 구조(훅→문제→비교→해결 Step→CTA)를 따라야 함.
-각 H2 의 est_words 는 **300~450**, H3 는 **150~250** (총 분량 2200~3000자 가량). 분량 부풀리기 금지.
+
+[📐 템플릿 — 3가지 중 1개를 선택해 outline 구성]
+주제와 카테고리 성격에 맞춰 아래 3가지 템플릿 중 가장 자연스러운 것을 선택하고, 그 구조로 H2/H3 를 짜라. **매번 같은 패턴 반복 금지** — 주제마다 다른 호흡으로.
+
+▸ **A. 가이드형 (Steps)** — 절차·체크리스트·실행이 핵심인 주제 (입주 가이드, 비자, ARC, 계약 등)
+   구조: ① 왜 알아야 하나(훅) → ② Step 1 → Step 2 → Step 3 → ③ 실행 체크리스트 → ④ 플라트 차별점 (마무리)
+
+▸ **B. 비교/추천형 (Compare)** — 선택지 비교·추천이 핵심 (동네 추천, 매물 비교, 옵션 비교)
+   구조: ① 고민 지점(훅) → ② 후보 A vs B vs C 비교 → ③ 상황별 추천 (페르소나·예산별) → ④ 플라트 차별점
+
+▸ **C. 스토리/Q&A형 (Story)** — 경험·후기·질문이 핵심 (입주 후기, 생활 팁, FAQ, 트러블슈팅)
+   구조: ① 실제 사례·질문(훅) → ② 어떤 일이 있었나 / 자주 묻는 것 → ③ 인사이트·답 → ④ 플라트 차별점
+
+[규칙]
+- 한 가지 템플릿 골라 그대로 따라가되, 헤딩 문구는 주제에 맞게 자연스럽게 작성 (절대 "Step 1", "비교", "스토리" 같은 메타 단어 그대로 쓰지 마)
+- 어떤 템플릿이든 마지막은 플라트 차별점 (보증금 0원/1주 단기/다국어/거주숙소제공확인서) 으로 자연 브리지
+- H2 3~4개 + H3 0~2개 수준으로 **간결하게**
+- H2 est_words **300~450**, H3 **150~250** (총 2200~3000자). 분량 부풀리기 금지
+
 키워드는 실제 네이버·구글에서 검색될 것 같은 것 위주. primary 1개 + secondary 3~5개.
+
+응답에 어떤 템플릿을 선택했는지 \`template\` 필드로 반환할 것 ("steps" | "compare" | "story").
 
 응답은 반드시 아래 JSON 스키마 (다른 텍스트·코드블록 금지):
 
@@ -105,7 +126,8 @@ ${styleGuide}
   "primary_keyword": "가장 중요한 검색어",
   "secondary_keywords": ["보조 검색어1", "보조 검색어2"],
   "target_kpi": "conversion|traffic|dwell_time",
-  "tone_guide": "이 글 특화 톤 한 문단 (예: 친근한 1:1 상담 톤, 법률·숫자 근거 제시, 끝은 플라트 서비스로 연결)",
+  "template": "steps|compare|story",
+  "tone_guide": "이 글 특화 톤 한 문단 (선택한 템플릿 성격 반영 — Steps 면 단계별 차분, Compare 면 분석적, Story 면 1인칭 친근)",
   "outline": [
     {
       "heading": "H2 제목 (질문문 or 인용구)",
@@ -150,6 +172,9 @@ ${styleGuide}
     target_kpi: ["conversion", "traffic", "dwell_time"].includes(parsed.target_kpi)
       ? parsed.target_kpi
       : "traffic",
+    template: ["steps", "compare", "story"].includes(parsed.template ?? "")
+      ? parsed.template
+      : "steps",
     tone_guide: String(parsed.tone_guide ?? ""),
     outline: parsed.outline.slice(0, 20).map((o) => ({
       heading: String(o.heading ?? "").slice(0, 200),
@@ -180,7 +205,11 @@ ${styleGuide}
         journey_stage: idea.cluster ?? null,
         outline: brief.outline,
         cta_hints: brief.cta_hints,
-        tone_guide: brief.tone_guide,
+        /* template 정보를 tone_guide 에 prefix 로 박아 writer 까지 전달
+           (별도 컬럼 추가 없이 outline 다양화 효과 유지) */
+        tone_guide: brief.template
+          ? `[구조: ${brief.template === "steps" ? "단계 가이드" : brief.template === "compare" ? "비교 추천" : "스토리·Q&A"}] ${brief.tone_guide}`
+          : brief.tone_guide,
         brief: brief.est_length,
         score: {
           fit: idea.fit_score ?? 0,
