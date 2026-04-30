@@ -8,7 +8,14 @@ export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 export const maxDuration = 30
 
-const SEND_WHEN = ["immediate", "after-5min", "after-10min", "after-1hour"] as const
+const SEND_WHEN = [
+  "immediate",
+  "after-5min",
+  "after-15min",
+  "after-30min",
+  "after-1hour",
+  "next-day-midnight",
+] as const
 
 const sendSchema = z.object({
   action: z.literal("send"),
@@ -105,10 +112,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true, metadata: nextMetadata })
   }
 
-  /* ─── action: schedule — queued 상태로 예약 (워커가 다음 PR 에서 발송) ─── */
+  /* ─── action: schedule — queued 상태로 예약 (Vercel Cron 워커가 발송) ─── */
   if (action === "schedule") {
-    const offsetMs = whenToOffsetMs(parsed.data.when)
-    const scheduledAt = new Date(Date.now() + offsetMs).toISOString()
+    const scheduledAt = computeScheduledAt(parsed.data.when).toISOString()
     const nextMetadata = {
       ...baseMeta,
       dab_send_intent: true,
@@ -216,11 +222,27 @@ export async function POST(req: Request) {
   return NextResponse.json({ ok: true, result, metadata: nextMetadata })
 }
 
-function whenToOffsetMs(when: (typeof SEND_WHEN)[number]): number {
+function computeScheduledAt(when: (typeof SEND_WHEN)[number]): Date {
+  const now = Date.now()
   switch (when) {
-    case "immediate":   return 0
-    case "after-5min":  return 5 * 60 * 1000
-    case "after-10min": return 10 * 60 * 1000
-    case "after-1hour": return 60 * 60 * 1000
+    case "immediate":   return new Date(now)
+    case "after-5min":  return new Date(now + 5 * 60 * 1000)
+    case "after-15min": return new Date(now + 15 * 60 * 1000)
+    case "after-30min": return new Date(now + 30 * 60 * 1000)
+    case "after-1hour": return new Date(now + 60 * 60 * 1000)
+    case "next-day-midnight": return computeNextKstMidnight()
   }
+}
+
+/** KST(UTC+9) 기준 다음날 00:00 → UTC Date */
+function computeNextKstMidnight(): Date {
+  const now = new Date()
+  /* 현재 시각을 KST 로 환산 */
+  const kst = new Date(now.getTime() + 9 * 60 * 60 * 1000)
+  /* KST 기준 오늘 자정 */
+  kst.setUTCHours(0, 0, 0, 0)
+  /* 다음날 00:00 (KST) */
+  kst.setUTCDate(kst.getUTCDate() + 1)
+  /* UTC 로 환산 */
+  return new Date(kst.getTime() - 9 * 60 * 60 * 1000)
 }
