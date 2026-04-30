@@ -462,7 +462,7 @@ export default function ContentsPage() {
                 {t.l}
                 <span
                   style={{
-                    fontSize: 10.5,
+                    fontSize: 11,
                     fontWeight: 600,
                     padding: "1px 6px",
                     borderRadius: 8,
@@ -490,7 +490,7 @@ export default function ContentsPage() {
               🗑 휴지통
               <span
                 style={{
-                  fontSize: 10.5,
+                  fontSize: 11,
                   fontWeight: 600,
                   padding: "1px 6px",
                   borderRadius: 8,
@@ -548,7 +548,7 @@ export default function ContentsPage() {
               padding: "10px 20px",
               background: isTrashView ? "#fef2f2" : "var(--brand-50)",
               borderBottom: `1px solid ${isTrashView ? "#fecaca" : "var(--brand-200)"}`,
-              fontSize: 12.5,
+              fontSize: 13,
             }}
           >
             <span style={{ fontWeight: 700, color: isTrashView ? "#991b1b" : "var(--brand-700)" }}>
@@ -585,7 +585,7 @@ export default function ContentsPage() {
               gap: 12,
               alignItems: "center",
               padding: "10px 20px",
-              fontSize: 10.5,
+              fontSize: 11,
               fontWeight: 700,
               color: "var(--text-secondary, #475569)",
               background: "linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%)",
@@ -734,7 +734,7 @@ export default function ContentsPage() {
                   >
                     <div
                       style={{
-                        fontSize: 13.5,
+                        fontSize: 14,
                         fontWeight: 600,
                         lineHeight: 1.4,
                         color: "var(--text-primary)",
@@ -747,7 +747,7 @@ export default function ContentsPage() {
                     </div>
                     <div
                       style={{
-                        fontSize: 10.5,
+                        fontSize: 11,
                         color: "var(--text-muted)",
                         marginTop: 3,
                         display: "flex",
@@ -767,7 +767,7 @@ export default function ContentsPage() {
                   {/* 카테고리 */}
                   <span
                     style={{
-                      fontSize: 10.5,
+                      fontSize: 11,
                       padding: "4px 10px",
                       borderRadius: 999,
                       background: "var(--brand-50, #eef2ff)",
@@ -786,7 +786,7 @@ export default function ContentsPage() {
                     onChange={(e) => handleChangeWhen(d, e.target.value as DabSendWhen)}
                     disabled={d.metadata?.dab_send_status === "sent" || d.metadata?.dab_send_status === "sending"}
                     style={{
-                      fontSize: 11.5,
+                      fontSize: 12,
                       padding: "5px 8px",
                       border: "1px solid var(--border-default)",
                       borderRadius: 6,
@@ -834,7 +834,7 @@ export default function ContentsPage() {
                           background: meta.bg,
                           color: meta.fg,
                           border: `1px solid ${meta.border}`,
-                          fontSize: 10.5,
+                          fontSize: 11,
                           fontWeight: 700,
                           padding: "3px 9px",
                           borderRadius: 999,
@@ -854,7 +854,7 @@ export default function ContentsPage() {
                     )
                   })()}
                   {/* 업데이트 */}
-                  <span style={{ fontSize: 11.5, color: "var(--text-muted)" }}>
+                  <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
                     {new Date(d.updated_at).toLocaleDateString("ko-KR", {
                       month: "numeric",
                       day: "numeric",
@@ -967,7 +967,7 @@ function SummaryTile({
     >
       <div
         style={{
-          fontSize: 10.5,
+          fontSize: 11,
           fontWeight: 600,
           color: "var(--text-muted)",
           textTransform: "uppercase",

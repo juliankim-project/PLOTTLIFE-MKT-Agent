@@ -289,7 +289,7 @@ export default function ReviewPage() {
                 style={{
                   padding: "32px 20px",
                   textAlign: "center",
-                  fontSize: 12.5,
+                  fontSize: 13,
                   color: "var(--text-muted)",
                   lineHeight: 1.6,
                 }}
@@ -315,11 +315,11 @@ export default function ReviewPage() {
                     background: on ? "var(--brand-50)" : "transparent",
                   }}
                 >
-                  <div style={{ fontSize: 12.5, fontWeight: 600, lineHeight: 1.35 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, lineHeight: 1.35 }}>
                     {d.title}
                   </div>
                   {d.primary_keyword && (
-                    <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 3 }}>
+                    <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 3 }}>
                       🎯 {d.primary_keyword}
                     </div>
                   )}
@@ -393,7 +393,7 @@ export default function ReviewPage() {
                 padding: "12px 20px",
                 background: "var(--bg-subtle)",
                 borderBottom: "1px solid var(--border-subtle)",
-                fontSize: 12.5,
+                fontSize: 13,
               }}
             >
               <span style={{ color: "var(--text-muted)", fontWeight: 600 }}>대상:</span>{" "}
@@ -449,7 +449,7 @@ export default function ReviewPage() {
                       marginBottom: 14,
                     }}
                   >
-                    <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--brand-700)", textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 4 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: "var(--brand-700)", textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 4 }}>
                       종합 요약
                     </div>
                     <div style={{ fontSize: 13, lineHeight: 1.5 }}>{summary}</div>
@@ -476,7 +476,7 @@ export default function ReviewPage() {
                         <div style={{ flex: 1 }}>
                           <div style={{ fontSize: 13, fontWeight: 700 }}>
                             {catName}
-                            <span style={{ fontSize: 10.5, color: "var(--text-muted)", fontWeight: 500, marginLeft: 6 }}>
+                            <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 500, marginLeft: 6 }}>
                               · {meta.desc}
                             </span>
                           </div>
@@ -543,7 +543,7 @@ export default function ReviewPage() {
                             marginLeft: "auto",
                             background: "white",
                             color: "#92400e",
-                            fontSize: 10.5,
+                            fontSize: 11,
                             border: "1px solid #fde68a",
                           }}
                         >
@@ -552,7 +552,7 @@ export default function ReviewPage() {
                       )}
                     </div>
                     {sourceCheck.overall_note && (
-                      <div style={{ fontSize: 12.5, color: "#92400e", marginBottom: 8, lineHeight: 1.5 }}>
+                      <div style={{ fontSize: 13, color: "#92400e", marginBottom: 8, lineHeight: 1.5 }}>
                         {sourceCheck.overall_note}
                       </div>
                     )}
@@ -581,7 +581,7 @@ export default function ReviewPage() {
                     </div>
                     <div style={{ fontSize: 14, color: "var(--text-muted)", fontWeight: 600 }}>/ 100</div>
                   </div>
-                  <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 4 }}>
+                  <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>
                     체크 {okCount}/{totalCount} 통과
                   </div>
                 </>
@@ -666,7 +666,7 @@ export default function ReviewPage() {
 
 function qualBtnStyle(on: boolean): React.CSSProperties {
   return {
-    fontSize: 10.5,
+    fontSize: 11,
     fontWeight: 700,
     padding: "3px 9px",
     border: 0,
@@ -722,18 +722,18 @@ function CheckItemRow({ item }: { item: ReviewItem }) {
         />
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 12.5, fontWeight: 600, color: item.ok ? "var(--text-primary)" : palette.fg }}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: item.ok ? "var(--text-primary)" : palette.fg }}>
           {item.label}
         </div>
         {item.detail && (
-          <div style={{ fontSize: 11.5, color: "var(--text-secondary)", marginTop: 3, lineHeight: 1.5 }}>
+          <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 3, lineHeight: 1.5 }}>
             {item.detail}
           </div>
         )}
         {item.suggestion && !item.ok && (
           <div
             style={{
-              fontSize: 11.5,
+              fontSize: 12,
               color: palette.fg,
               marginTop: 4,
               lineHeight: 1.5,
@@ -804,7 +804,7 @@ function FactCheckBlock({
         <span style={{ fontSize: 14 }}>🔍</span>
         <div style={{ fontSize: 13, fontWeight: 700, color: "#3730a3" }}>
           AI 사실 검증
-          <span style={{ fontSize: 10.5, color: "#6366f1", fontWeight: 500, marginLeft: 6 }}>
+          <span style={{ fontSize: 11, color: "#6366f1", fontWeight: 500, marginLeft: 6 }}>
             · Google Search 로 본문 주장 재검증 (검수자만 보임)
           </span>
         </div>
@@ -814,7 +814,7 @@ function FactCheckBlock({
             marginLeft: "auto",
             background: "white",
             color: "#3730a3",
-            fontSize: 10.5,
+            fontSize: 11,
             border: "1px solid #c7d2fe",
           }}
         >
@@ -823,7 +823,7 @@ function FactCheckBlock({
       </div>
 
       {summary && (
-        <div style={{ fontSize: 11.5, color: "#4338ca", marginBottom: 10, fontWeight: 600 }}>
+        <div style={{ fontSize: 12, color: "#4338ca", marginBottom: 10, fontWeight: 600 }}>
           {summary}
         </div>
       )}
@@ -837,7 +837,7 @@ function FactCheckBlock({
                 alignItems: "center",
                 gap: 6,
                 marginBottom: 5,
-                fontSize: 11.5,
+                fontSize: 12,
                 fontWeight: 700,
                 color: g.meta.fg,
               }}
@@ -933,7 +933,7 @@ function SourceList({
       <div style={{ fontSize: 11, fontWeight: 700, color: "#92400e", marginBottom: 4 }}>
         {emoji} {title} ({items.length})
       </div>
-      <ul style={{ margin: 0, paddingLeft: 18, fontSize: 11.5, color: "#78350f", lineHeight: 1.6 }}>
+      <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12, color: "#78350f", lineHeight: 1.6 }}>
         {items.map((x, i) => (
           <li key={i}>{x}</li>
         ))}

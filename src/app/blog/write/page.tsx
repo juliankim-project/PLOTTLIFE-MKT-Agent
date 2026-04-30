@@ -479,7 +479,7 @@ export default function WriteListPage() {
                 {t.l}
                 <span
                   style={{
-                    fontSize: 10.5,
+                    fontSize: 11,
                     fontWeight: 600,
                     padding: "1px 6px",
                     borderRadius: 8,
@@ -507,7 +507,7 @@ export default function WriteListPage() {
               🗑 휴지통
               <span
                 style={{
-                  fontSize: 10.5,
+                  fontSize: 11,
                   fontWeight: 600,
                   padding: "1px 6px",
                   borderRadius: 8,
@@ -600,7 +600,7 @@ export default function WriteListPage() {
                   padding: "10px 20px",
                   background: "var(--brand-50)",
                   borderBottom: "1px solid var(--brand-200)",
-                  fontSize: 12.5,
+                  fontSize: 13,
                 }}
               >
                 <span style={{ fontWeight: 700, color: "var(--brand-700)" }}>
@@ -717,7 +717,7 @@ export default function WriteListPage() {
                   >
                     <div
                       style={{
-                        fontSize: 13.5,
+                        fontSize: 14,
                         fontWeight: 600,
                         lineHeight: 1.4,
                         marginBottom: 3,
@@ -799,7 +799,7 @@ export default function WriteListPage() {
                         </div>
                         <div
                           style={{
-                            fontSize: 10.5,
+                            fontSize: 11,
                             textAlign: "center",
                             marginTop: 3,
                             color: "var(--text-muted)",
@@ -919,7 +919,7 @@ function Tile({
     >
       <div
         style={{
-          fontSize: 10.5,
+          fontSize: 11,
           fontWeight: 600,
           color: "var(--text-muted)",
           textTransform: "uppercase",

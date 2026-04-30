@@ -49,6 +49,22 @@
 }
 
 :root {
+  /* ─── 폰트 시스템 — Pretendard 통일 ─────────────────────── */
+  --font-sans:
+    "Pretendard Variable", Pretendard,
+    -apple-system, BlinkMacSystemFont, system-ui, "Apple SD Gothic Neo",
+    "Noto Sans KR", "Malgun Gothic", sans-serif;
+
+  /* Type Scale — 모든 페이지 공통 */
+  --text-xs:   11px;   /* 메타·캡션 */
+  --text-sm:   12px;   /* 보조 텍스트·chip */
+  --text-base: 13px;   /* 본문 기본 */
+  --text-md:   14px;   /* 강조 본문 */
+  --text-lg:   16px;   /* 섹션 라벨 */
+  --text-xl:   18px;   /* 카드 제목 */
+  --text-2xl:  22px;   /* 페이지 부제 */
+  --text-3xl:  28px;   /* 페이지 제목 */
+
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
@@ -121,12 +137,32 @@
   * {
     @apply border-border outline-ring/50;
   }
+  html {
+    font-family: var(--font-sans);
+    font-feature-settings: "ss06" 1, "tnum" 1; /* Pretendard 한국어 최적화 + 숫자 정렬 */
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
   body {
     @apply bg-background text-foreground;
+    font-family: inherit;
+    font-size: var(--text-base);
+    line-height: 1.55;
+    color: var(--text-primary, oklch(0.145 0 0));
   }
-  html {
-    @apply font-sans;
+  /* Pretendard 환경에서 숫자만 mono 처럼 — 표·카드 정렬 */
+  .text-mono, code {
+    font-family: var(--font-geist-mono), ui-monospace, "SF Mono",
+      Monaco, "Cascadia Mono", Consolas, monospace;
+    font-feature-settings: "tnum" 1;
   }
+  /* 헤딩 통일 */
+  h1 { font-size: var(--text-3xl); font-weight: 800; letter-spacing: -0.02em; }
+  h2 { font-size: var(--text-2xl); font-weight: 700; letter-spacing: -0.015em; }
+  h3 { font-size: var(--text-xl);  font-weight: 700; letter-spacing: -0.01em; }
+  h4 { font-size: var(--text-lg);  font-weight: 700; }
+  h5, h6 { font-size: var(--text-md); font-weight: 600; }
 }
 
 @keyframes shimmer {
