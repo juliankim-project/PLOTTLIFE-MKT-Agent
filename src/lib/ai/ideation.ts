@@ -29,6 +29,40 @@ const SIGNAL_KINDS = [
 ] as const
 type SignalKind = (typeof SIGNAL_KINDS)[number]
 
+/** 각 intent 별 주제 짜는 각도 + 좋은/나쁜 예 — LLM 이 intent 를 정확히 구분하게 */
+const INTENT_ANGLE: Record<Intent, { angle: string; good: string; bad: string; badReason: string }> = {
+  discover: {
+    angle: "처음 검색하는 사람이 던지는 큰 질문에 답. 정의·개관·전체 그림.",
+    good: "외국인 유학생이 한국에서 단기임대 구하는 법 — 비자별 가이드",
+    bad: "왜 우리가 1위인가",
+    badReason: "(이건 advocate)",
+  },
+  convince: {
+    angle: "둘셋 후보 사이에서 망설이는 사람을 결단으로. 비교·기준·트레이드오프.",
+    good: "기숙사 vs 단기임대 vs 고시원 — 외국인 유학생에 뭐가 맞나",
+    bad: "ARC 발급 절차",
+    badReason: "(이건 enable)",
+  },
+  enable: {
+    angle: "이미 결정한 사람에게 다음 한 발자국. 절차·체크리스트·실행 가이드.",
+    good: "도착 첫 주 체크리스트 — ARC, 휴대폰 개통, 보험 가입",
+    bad: "어떤 동네가 좋나",
+    badReason: "(이건 discover)",
+  },
+  retain: {
+    angle: "이미 살고 있는 사람에게 만족도 ↑. 라이프스타일·동네·일상 팁.",
+    good: "단기임대 거주자가 자주 가는 홍대 카페 5곳 — 와이파이·가성비",
+    bad: "한국 입주 절차",
+    badReason: "(이건 enable)",
+  },
+  advocate: {
+    angle: "떠나거나 떠날 사람에게 다음·추천. 회상·연결·재방문 동기.",
+    good: "한 학기 살아본 후 — 다음 학기 또 오고 싶은 이유",
+    bad: "처음 한국 오는 법",
+    badReason: "(이건 discover)",
+  },
+}
+
 interface GeneratedIdea {
   title: string
   cluster: JourneyStage
@@ -81,13 +115,14 @@ function buildCompassBlock(input: CompassInput & { searchQuery?: string; searchM
   /* 목적 */
   const intents = input.intents && input.intents.length > 0 ? input.intents : INTENTS.slice()
   parts.push(
-    `## 목적 (Intent) — 이 중에서 고르게 분산 (각 주제 1개씩 지정)\n` +
+    `## 목적 (Intent) — 각 주제는 반드시 **하나의 intent 에 정확히 매칭**, 다른 intent 영역 침범 금지\n` +
       intents
         .map((id) => {
           const d = INTENT_DEFS[id]
-          return `- ${d.id} · ${d.emoji} ${d.ko} · ${d.desc}`
+          const angle = INTENT_ANGLE[id]
+          return `▸ ${d.id} · ${d.emoji} ${d.ko}\n   각도: ${angle.angle}\n   ✅ 좋은 예: "${angle.good}"\n   ❌ 나쁜 예: "${angle.bad}" ${angle.badReason}`
         })
-        .join("\n")
+        .join("\n\n")
   )
 
   /* 여정 단계 */
@@ -282,9 +317,31 @@ ${segmentBlock}
 
 ${compassBlock}${contextBlock}${signalBlock}
 
+## 🎯 필수 원칙 (모든 주제 공통 — 위반하면 그 주제는 폐기)
+
+1. **플라트 전환 깔때기 정렬**
+   모든 주제는 검색→탐색→활동→유입→전환 깔때기에서 한 단계.
+   주제 자체에서 "플라트라이프" 라는 단어는 박지 말되, 답이 향하는 사람은
+   결국 플라트 단기임대 후보 고객이어야 함.
+
+2. **타사명·타사 사례 직접 언급 절대 금지**
+   - ❌ "야놀자 vs 에어비앤비 비교" / "켄싱턴호텔 후기"
+   - ✅ "단기임대 플랫폼 비교 — 어떤 기준으로 골라야 하나"
+   - ✅ "단기숙소 vs 호텔 — 외국인 한 달 살이는?" (카테고리·일반명사만)
+
+3. **우리 산업·서비스 영역만 다룸**
+   허용: 단기임대 시장 / 외국인 유학생·주재원·노마드·내국인 이사
+        비자(D-2/D-4/E/F-1)·ARC·거주숙소제공확인서 / 한국 거주 라이프
+   금지: 호텔·관광 추천 / 음식·여행 가이드 / 비자 무관 일반 콘텐츠
+
+4. **데이터 부족·허위 추측 금지**
+   - ❌ "외국인 유학생 90%가 보증금 분쟁 경험" (출처 없음)
+   - ✅ "외국인 유학생의 보증금 분쟁 사례와 예방법" (검증된 후 본문에서)
+
 ## 요구사항
 - 각 주제는 위 축들을 조합한 구체적 롱테일 주제여야 함
 - 각 주제는 반드시 "cluster"(여정) + "intent"(목적) 두 축을 모두 지정
+- **각 주제의 intent 가 다른 intent 영역을 침범하면 안 됨** (위 INTENT 가이드의 좋은/나쁜 예 엄격 적용)
 - 선택된 여정 단계·목적에 고르게 분산
 - 플라트 매물(단기임대·보증금 0원·ARC 발급·1주 단기·다국어) 서비스와 자연스럽게 연결
 - 한국어 제목
