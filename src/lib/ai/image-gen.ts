@@ -65,9 +65,8 @@ export async function generateImage(prompt: string): Promise<GeneratedImage> {
           config: {
             numberOfImages: 1,
             aspectRatio: "16:9",
-            /* 가짜 한글 표지판/역명 등 텍스트 차단 (3중 방어 — prompt + negativePrompt) */
-            negativePrompt:
-              "korean text, hangul characters, station sign, subway sign, metro sign, street sign with text, building name plate, storefront text, signage with readable letters, logos, watermarks, brand names, garbled text, fake characters",
+            /* ※ negativePrompt 는 Imagen 4 에서 deprecated → 제거.
+               텍스트·간판 차단은 prompt 자체와 STYLE_SUFFIX 의 강력한 NO 가이드로. */
           },
         })) as GenaiImageResponse
 
