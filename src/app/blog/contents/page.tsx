@@ -42,14 +42,22 @@ interface DraftItem {
   updated_at: string
 }
 
-type DabSendWhen = "immediate" | "after-5min" | "after-10min" | "after-1hour"
+type DabSendWhen =
+  | "immediate"
+  | "after-5min"
+  | "after-15min"
+  | "after-30min"
+  | "after-1hour"
+  | "next-day-midnight"
 type DabSendStatus = "queued" | "sending" | "sent" | "failed"
 
-const DAB_SEND_WHEN_OPTIONS: Array<{ value: DabSendWhen; label: string; enabled: boolean }> = [
-  { value: "immediate",   label: "즉시",       enabled: true },
-  { value: "after-5min",  label: "5분 뒤",    enabled: false },
-  { value: "after-10min", label: "10분 뒤",   enabled: false },
-  { value: "after-1hour", label: "1시간 뒤",  enabled: false },
+const DAB_SEND_WHEN_OPTIONS: Array<{ value: DabSendWhen; label: string }> = [
+  { value: "immediate",         label: "즉시" },
+  { value: "after-5min",        label: "5분 뒤" },
+  { value: "after-15min",       label: "15분 뒤" },
+  { value: "after-30min",       label: "30분 뒤" },
+  { value: "after-1hour",       label: "1시간 뒤" },
+  { value: "next-day-midnight", label: "다음날 00시" },
 ]
 
 const DAB_SEND_STATUS_LABEL: Record<DabSendStatus | "idle", { label: string; emoji: string; bg: string; fg: string; border: string }> = {
@@ -781,8 +789,8 @@ export default function ContentsPage() {
                     }}
                   >
                     {DAB_SEND_WHEN_OPTIONS.map((opt) => (
-                      <option key={opt.value} value={opt.value} disabled={!opt.enabled}>
-                        {opt.label}{opt.enabled ? "" : " (곧 지원)"}
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
                       </option>
                     ))}
                   </select>
@@ -790,9 +798,29 @@ export default function ContentsPage() {
                   {(() => {
                     const sendStatus = d.metadata?.dab_send_status ?? "idle"
                     const meta = DAB_SEND_STATUS_LABEL[sendStatus]
+                    /* queued 일 때 예약 시각 표시 (KST) */
+                    const scheduledAt = d.metadata?.dab_send_scheduled_at
+                    const scheduledLabel =
+                      sendStatus === "queued" && scheduledAt
+                        ? new Date(scheduledAt).toLocaleString("ko-KR", {
+                            month: "2-digit",
+                            day: "2-digit",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                            hour12: false,
+                          })
+                        : null
+                    const titleText =
+                      sendStatus === "failed"
+                        ? d.metadata?.dab_send_error ?? "전송 실패"
+                        : sendStatus === "queued" && scheduledAt
+                        ? `예약: ${new Date(scheduledAt).toLocaleString("ko-KR")}`
+                        : sendStatus === "sent" && d.metadata?.dab_send_at
+                        ? `완료: ${new Date(d.metadata.dab_send_at).toLocaleString("ko-KR")}`
+                        : undefined
                     return (
                       <span
-                        title={d.metadata?.dab_send_error ?? undefined}
+                        title={titleText}
                         style={{
                           background: meta.bg,
                           color: meta.fg,
@@ -805,10 +833,14 @@ export default function ContentsPage() {
                           display: "inline-flex",
                           alignItems: "center",
                           gap: 4,
+                          maxWidth: 110,
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
                         }}
                       >
                         {meta.emoji && <span>{meta.emoji}</span>}
-                        {meta.label}
+                        {scheduledLabel ?? meta.label}
                       </span>
                     )
                   })()}
