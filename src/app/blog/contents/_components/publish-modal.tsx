@@ -133,7 +133,7 @@ export function PublishSettingModal({ draft, topic, onClose }: Props) {
           <div style={{ flex: 1, minWidth: 0 }}>
             <div
               style={{
-                fontSize: 10.5,
+                fontSize: 11,
                 fontWeight: 700,
                 color: "var(--brand-700)",
                 letterSpacing: "0.08em",
@@ -159,7 +159,7 @@ export function PublishSettingModal({ draft, topic, onClose }: Props) {
               {draft.title}
             </div>
             {isAlreadyRegistered && (
-              <div style={{ fontSize: 11.5, color: "#0e7490", marginTop: 6, fontWeight: 600 }}>
+              <div style={{ fontSize: 12, color: "#0e7490", marginTop: 6, fontWeight: 600 }}>
                 ⓘ 이미 어드민에 등록됨 (id: {draft.metadata?.dab_blog_id}) — 재발행 시 덮어씁니다
               </div>
             )}
@@ -210,7 +210,7 @@ export function PublishSettingModal({ draft, topic, onClose }: Props) {
             background: "#fafbff",
           }}
         >
-          <div style={{ fontSize: 11.5, color: "var(--text-muted)" }}>
+          <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
             카테고리·발행 토글은 <b>콘텐츠 관리 행</b>에서 직접 조작하세요
           </div>
           <button
@@ -359,7 +359,7 @@ function AdminRowPreview({
           padding: "8px 12px",
           background: "var(--bg-subtle)",
           borderBottom: "1px solid var(--border-subtle)",
-          fontSize: 10.5,
+          fontSize: 11,
           fontWeight: 700,
           color: "var(--text-muted)",
           textTransform: "uppercase",
@@ -418,14 +418,14 @@ function AdminRowPreview({
           <div style={{ fontWeight: 600, lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {input.title}
           </div>
-          <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 1 }}>
+          <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 1 }}>
             {input.authorName}
           </div>
         </div>
         <div>
           <span
             style={{
-              fontSize: 10.5,
+              fontSize: 11,
               padding: "2px 8px",
               borderRadius: 4,
               background: "#f3f4f6",
@@ -467,7 +467,7 @@ function AdminRowPreview({
         </div>
         <div style={{ textAlign: "right", color: "var(--text-muted)" }}>0</div>
         <div style={{ textAlign: "right", color: "var(--text-muted)" }}>0.0</div>
-        <div style={{ fontSize: 10.5, color: "var(--text-muted)" }}>
+        <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
           {new Date(draft.updated_at).toLocaleDateString("ko-KR", { year: "2-digit", month: "2-digit", day: "2-digit" })}
         </div>
         <div style={{ textAlign: "center" }}>
@@ -543,7 +543,7 @@ function WebBlogPreview({
         <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, color: "#475569" }}>
           <span
             style={{
-              fontSize: 10.5,
+              fontSize: 11,
               padding: "2px 8px",
               borderRadius: 4,
               background: "var(--brand-50)",
@@ -575,7 +575,7 @@ function WebBlogPreview({
           style={{ width: "100%", aspectRatio: "16 / 9", objectFit: "cover", display: "block", marginTop: 10 }}
         />
       )}
-      <div style={{ padding: "14px 18px 18px", color: "#475569", fontSize: 12.5, lineHeight: 1.65 }}>
+      <div style={{ padding: "14px 18px 18px", color: "#475569", fontSize: 13, lineHeight: 1.65 }}>
         {input.summary && (
           <div style={{ display: "-webkit-box", WebkitLineClamp: 4, WebkitBoxOrient: "vertical" as const, overflow: "hidden" }}>
             {input.summary}

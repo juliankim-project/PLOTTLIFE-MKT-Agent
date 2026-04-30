@@ -56,7 +56,7 @@ export function MarkdownPreview({ body, title, heroUrl, generatingImages = false
               return (
                 <div
                   key={j}
-                  style={{ display: "flex", gap: 8, alignItems: "flex-start", padding: "3px 0", fontSize: 13.5 }}
+                  style={{ display: "flex", gap: 8, alignItems: "flex-start", padding: "3px 0", fontSize: 14 }}
                 >
                   <span
                     style={{
@@ -189,7 +189,7 @@ export function MarkdownPreview({ body, title, heroUrl, generatingImages = false
               background: "var(--brand-50)",
               margin: "14px 0",
               color: "var(--brand-700)",
-              fontSize: 12.5,
+              fontSize: 13,
             }}
           >
             🖼 IMAGE_SLOT_{slotMatch[1]} · {slotMatch[2]}
