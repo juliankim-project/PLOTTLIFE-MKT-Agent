@@ -311,7 +311,8 @@ ${signalContext}
     ? `\n\n## 🔥 Google Search 로 수집한 최신 시장 신호 (반드시 반영)\n${signalText}\n\n[참고 매체] ${signalPublishers.join(" · ")}\n\n위 신호들을 ideas.signal_kind/signal_detail/related_keywords 에 자연스럽게 녹여라.`
     : ""
 
-  const prompt = `플라트라이프(한국 단기임대 플랫폼) 블로그용 주제 ${count}개를 생성해줘.
+  const prompt = `플라트라이프(한국 단기임대 플랫폼) 블로그용 주제 **정확히 ${count}개** 를 생성해줘.
+⚠️ 응답의 \`ideas\` 배열은 **반드시 길이 ${count}** — 더 적거나 더 많이 만들면 안 됨.
 
 ${segmentBlock}
 
@@ -348,6 +349,8 @@ ${compassBlock}${contextBlock}${signalBlock}
 
 ## 응답 형식 (반드시 아래 JSON 스키마 — 다른 설명·주석·코드블록 금지)
 
+⚠️ \`ideas\` 배열의 길이는 **정확히 ${count}** 여야 함. 아래는 형식 예시 (실제 응답에서는 ${count}개 모두 채울 것).
+
 {
   "ideas": [
     {
@@ -360,7 +363,19 @@ ${compassBlock}${contextBlock}${signalBlock}
       "signal_kind": "search-rising",
       "signal_detail": "'보증금 없는 단기임대' +45% MoM",
       "related_keywords": ["보증금 없는 방", "보증금 0원", "no deposit Seoul"]
+    },
+    {
+      "title": "외국인 유학생 ARC 발급 전 첫 주 체크리스트",
+      "cluster": "arrive",
+      "intent": "enable",
+      "rationale": "...",
+      "volume": 12000,
+      "fit_score": 85,
+      "signal_kind": "evergreen",
+      "signal_detail": "...",
+      "related_keywords": ["ARC 발급", "외국인 등록", "첫 주 체크리스트"]
     }
+    /* ... 위 형식으로 정확히 ${count}개의 idea 객체를 ideas 배열에 채울 것 ... */
   ]
 }
 
@@ -418,6 +433,11 @@ related_keywords 는 3~5개.`
         .update({ status: "failed", error: "유효 주제 0개", completed_at: new Date().toISOString() })
         .eq("id", run.id)
       throw new Error("유효한 주제가 생성되지 않았습니다")
+    }
+    if (cleaned.length < count) {
+      console.warn(
+        `[ideation] LLM returned ${cleaned.length}/${count} ideas — example pattern bias 의심`
+      )
     }
 
     /* Bulk insert — intent 는 signal jsonb 안에 함께 저장 */
