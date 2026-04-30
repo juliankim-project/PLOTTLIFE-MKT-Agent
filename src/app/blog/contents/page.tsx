@@ -581,20 +581,21 @@ export default function ContentsPage() {
           </div>
         )}
 
-        {/* 헤더 (체크박스용) */}
+        {/* 헤더 */}
         {visible.length > 0 && (
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "32px 54px 1fr 100px 80px 110px 110px 90px 170px",
+              gridTemplateColumns: "32px 90px 56px 1fr 90px 110px 100px 80px 160px",
               gap: 12,
               alignItems: "center",
-              padding: "8px 20px",
-              fontSize: 11,
+              padding: "10px 20px",
+              fontSize: 10.5,
               fontWeight: 700,
-              color: "var(--text-muted)",
-              background: "var(--bg-subtle)",
+              color: "var(--text-secondary, #475569)",
+              background: "linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%)",
               borderBottom: "1px solid var(--border-default)",
+              borderTop: "1px solid var(--border-default)",
               textTransform: "uppercase",
               letterSpacing: ".04em",
             }}
@@ -610,11 +611,11 @@ export default function ContentsPage() {
                 aria-label="전체 선택"
               />
             </div>
-            <div>썸네일</div>
+            <div style={{ textAlign: "center" }}>어드민 전송</div>
+            <div style={{ textAlign: "center" }}>썸네일</div>
             <div>제목 / 작성자</div>
             <div>카테고리</div>
-            <div>드래프트로 보낼까요?</div>
-            <div>언제</div>
+            <div>전송 시점</div>
             <div>전송 상태</div>
             <div>업데이트</div>
             <div style={{ textAlign: "right" }}>액션</div>
@@ -665,15 +666,16 @@ export default function ContentsPage() {
                   className="content-row"
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "32px 54px 1fr 100px 80px 110px 110px 90px 170px",
+                    gridTemplateColumns: "32px 90px 56px 1fr 90px 110px 100px 80px 160px",
                     gap: 12,
                     alignItems: "center",
-                    padding: "12px 20px",
+                    padding: "14px 20px",
                     borderBottom: "1px solid var(--border-subtle)",
-                    background: checked ? "var(--brand-50)" : undefined,
-                    opacity: 1,
+                    background: checked ? "var(--brand-50)" : "white",
+                    transition: "background 0.15s ease",
                   }}
                 >
+                  {/* 체크박스 */}
                   <div style={{ textAlign: "center" }}>
                     <input
                       type="checkbox"
@@ -683,32 +685,45 @@ export default function ContentsPage() {
                       aria-label={`${d.title} 선택`}
                     />
                   </div>
+                  {/* 어드민 전송 토글 */}
+                  <div style={{ display: "flex", justifyContent: "center" }}>
+                    <ToggleSwitch
+                      on={!!d.metadata?.dab_send_intent}
+                      busy={togglingId === d.id}
+                      onToggle={() =>
+                        handleToggleSendIntent(d, !d.metadata?.dab_send_intent)
+                      }
+                      label={`${d.title} 어드민 전송`}
+                    />
+                  </div>
                   {/* 썸네일 */}
-                  <div>
+                  <div style={{ display: "flex", justifyContent: "center" }}>
                     {d.hero_image_url ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
                         src={d.hero_image_url}
                         alt=""
                         style={{
-                          width: 48,
-                          height: 32,
+                          width: 52,
+                          height: 36,
                           objectFit: "cover",
-                          borderRadius: 4,
+                          borderRadius: 6,
                           display: "block",
+                          border: "1px solid var(--border-subtle)",
                         }}
                       />
                     ) : (
                       <div
                         style={{
-                          width: 48,
-                          height: 32,
+                          width: 52,
+                          height: 36,
                           background: "var(--bg-muted)",
-                          borderRadius: 4,
+                          borderRadius: 6,
                           display: "grid",
                           placeItems: "center",
                           color: "var(--text-muted)",
                           fontSize: 14,
+                          border: "1px solid var(--border-subtle)",
                         }}
                       >
                         📄
@@ -727,6 +742,7 @@ export default function ContentsPage() {
                         fontSize: 13.5,
                         fontWeight: 600,
                         lineHeight: 1.4,
+                        color: "var(--text-primary)",
                         overflow: "hidden",
                         textOverflow: "ellipsis",
                         whiteSpace: "nowrap",
@@ -738,12 +754,18 @@ export default function ContentsPage() {
                       style={{
                         fontSize: 10.5,
                         color: "var(--text-muted)",
-                        marginTop: 2,
+                        marginTop: 3,
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 6,
                       }}
                     >
-                      플라트라이프 에디터
+                      <span>플라트라이프 에디터</span>
                       {d.primary_keyword && (
-                        <span style={{ marginLeft: 6 }}>· 🎯 {d.primary_keyword}</span>
+                        <>
+                          <span style={{ color: "var(--border-default)" }}>·</span>
+                          <span>🎯 {d.primary_keyword}</span>
+                        </>
                       )}
                     </div>
                   </div>
@@ -751,28 +773,19 @@ export default function ContentsPage() {
                   <span
                     style={{
                       fontSize: 10.5,
-                      padding: "3px 10px",
-                      borderRadius: 4,
-                      background: "#f3f4f6",
-                      color: "var(--text-secondary)",
+                      padding: "4px 10px",
+                      borderRadius: 999,
+                      background: "var(--brand-50, #eef2ff)",
+                      color: "var(--brand-700, #4338ca)",
                       fontWeight: 600,
                       justifySelf: "start",
+                      border: "1px solid var(--brand-200, #c7d2fe)",
+                      whiteSpace: "nowrap",
                     }}
                   >
                     {dabCategory}
                   </span>
-                  {/* 보낼까요? (토글) */}
-                  <div style={{ justifySelf: "start" }}>
-                    <ToggleSwitch
-                      on={!!d.metadata?.dab_send_intent}
-                      busy={togglingId === d.id}
-                      onToggle={() =>
-                        handleToggleSendIntent(d, !d.metadata?.dab_send_intent)
-                      }
-                      label={`${d.title} 드래프트로 보낼까요`}
-                    />
-                  </div>
-                  {/* 언제 (드롭다운) */}
+                  {/* 전송 시점 (드롭다운) */}
                   <select
                     value={d.metadata?.dab_send_when ?? "immediate"}
                     onChange={(e) => handleChangeWhen(d, e.target.value as DabSendWhen)}
@@ -784,8 +797,9 @@ export default function ContentsPage() {
                       borderRadius: 6,
                       background: "white",
                       color: "var(--text-primary)",
-                      cursor: "pointer",
+                      cursor: d.metadata?.dab_send_status === "sent" ? "not-allowed" : "pointer",
                       width: "100%",
+                      transition: "border-color 0.15s",
                     }}
                   >
                     {DAB_SEND_WHEN_OPTIONS.map((opt) => (
