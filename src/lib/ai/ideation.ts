@@ -393,7 +393,8 @@ related_keywords 는 3~5개.`
       projectId: input.projectId,
       prompt,
       temperature: input.temperature ?? 0.7,
-      maxTokens: 8000,
+      /* 16000 tokens — Pro 모델의 thinking budget 까지 감안. prompt 가 매우 길어 출력 잘림 방지. */
+      maxTokens: 16000,
       json: true,
       modelOverride: input.quality === "pro" ? "gemini-2.5-pro" : "gemini-2.5-flash",
     })
@@ -408,24 +409,27 @@ related_keywords 는 3~5개.`
       throw new Error("AI 응답이 JSON 스키마에 맞지 않습니다")
     }
 
-    const cleaned: GeneratedIdea[] = parsed.ideas
-      .filter((i) => i && typeof i.title === "string" && typeof i.cluster === "string")
-      .map((i) => ({
-        title: i.title,
-        cluster: ((JOURNEY_STAGES as readonly string[]).includes(i.cluster) ? i.cluster : "consider") as JourneyStage,
-        intent: ((INTENTS as readonly string[]).includes(i.intent) ? i.intent : "discover") as Intent,
-        rationale: String(i.rationale ?? ""),
-        volume: typeof i.volume === "number" ? i.volume : null,
-        fit_score:
-          typeof i.fit_score === "number"
-            ? Math.max(0, Math.min(100, Math.round(i.fit_score)))
-            : null,
-        signal_kind: ((SIGNAL_KINDS as readonly string[]).includes(i.signal_kind)
-          ? i.signal_kind
-          : "evergreen") as SignalKind,
-        signal_detail: String(i.signal_detail ?? ""),
-        related_keywords: Array.isArray(i.related_keywords) ? i.related_keywords.slice(0, 8) : [],
-      }))
+    const normalizeIdeas = (raw: GeneratedIdea[]): GeneratedIdea[] =>
+      raw
+        .filter((i) => i && typeof i.title === "string" && typeof i.cluster === "string")
+        .map((i) => ({
+          title: i.title,
+          cluster: ((JOURNEY_STAGES as readonly string[]).includes(i.cluster) ? i.cluster : "consider") as JourneyStage,
+          intent: ((INTENTS as readonly string[]).includes(i.intent) ? i.intent : "discover") as Intent,
+          rationale: String(i.rationale ?? ""),
+          volume: typeof i.volume === "number" ? i.volume : null,
+          fit_score:
+            typeof i.fit_score === "number"
+              ? Math.max(0, Math.min(100, Math.round(i.fit_score)))
+              : null,
+          signal_kind: ((SIGNAL_KINDS as readonly string[]).includes(i.signal_kind)
+            ? i.signal_kind
+            : "evergreen") as SignalKind,
+          signal_detail: String(i.signal_detail ?? ""),
+          related_keywords: Array.isArray(i.related_keywords) ? i.related_keywords.slice(0, 8) : [],
+        }))
+
+    let cleaned: GeneratedIdea[] = normalizeIdeas(parsed.ideas)
 
     if (cleaned.length === 0) {
       await db
@@ -434,11 +438,61 @@ related_keywords 는 3~5개.`
         .eq("id", run.id)
       throw new Error("유효한 주제가 생성되지 않았습니다")
     }
+
+    /* 부족분 자동 재시도 — 1회 한정 */
     if (cleaned.length < count) {
-      console.warn(
-        `[ideation] LLM returned ${cleaned.length}/${count} ideas — example pattern bias 의심`
-      )
+      const missing = count - cleaned.length
+      console.warn(`[ideation] got ${cleaned.length}/${count} — retrying for ${missing} more`)
+      try {
+        const existingList = cleaned
+          .map((i) => `- "${i.title}" (cluster=${i.cluster}, intent=${i.intent})`)
+          .join("\n")
+        const retryPrompt = `방금 만든 주제 ${cleaned.length}개:
+${existingList}
+
+위와 **다른 cluster·intent 분포** 의 새로운 주제를 **정확히 ${missing}개** 더 만들어줘.
+이미 만든 주제와 중복되거나 너무 비슷한 각도는 제외.
+
+응답 형식 (JSON 만):
+{ "ideas": [ ... ${missing}개 ... ] }
+
+각 idea 의 필드는 첫 호출과 동일 (title, cluster, intent, rationale, volume, fit_score, signal_kind, signal_detail, related_keywords).
+cluster ∈ [${JOURNEY_STAGES.join(", ")}], intent ∈ [${INTENTS.join(", ")}].
+
+⚠️ 필수 원칙 그대로 — 타사명 직접 언급 X, 우리 산업·서비스 영역만, 허위 추측 X.`
+
+        const retryResult = await runAgent({
+          agentSlug: "content-strategist",
+          stage: "ideation",
+          projectId: input.projectId,
+          prompt: retryPrompt,
+          temperature: (input.temperature ?? 0.7) + 0.1, // 다양성 ↑
+          maxTokens: 8000,
+          json: true,
+          modelOverride: input.quality === "pro" ? "gemini-2.5-pro" : "gemini-2.5-flash",
+        })
+        const retryParsed = retryResult.json as { ideas?: GeneratedIdea[] } | undefined
+        if (retryParsed?.ideas && Array.isArray(retryParsed.ideas)) {
+          const retryCleaned = normalizeIdeas(retryParsed.ideas)
+          /* 중복 제거 — title 기준 */
+          const existingTitles = new Set(cleaned.map((i) => i.title.trim()))
+          for (const r of retryCleaned) {
+            if (!existingTitles.has(r.title.trim())) {
+              cleaned.push(r)
+              existingTitles.add(r.title.trim())
+              if (cleaned.length >= count) break
+            }
+          }
+        }
+      } catch (err) {
+        console.warn(
+          `[ideation] retry failed: ${err instanceof Error ? err.message : String(err)} — proceeding with ${cleaned.length}/${count}`
+        )
+      }
     }
+
+    /* count 초과 분 잘라내기 */
+    if (cleaned.length > count) cleaned = cleaned.slice(0, count)
 
     /* Bulk insert — intent 는 signal jsonb 안에 함께 저장 */
     const { data: inserted, error: insErr } = await db
