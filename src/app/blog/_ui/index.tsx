@@ -335,50 +335,55 @@ export function CatCard({
   return (
     <div
       style={{
-        padding: 18,
+        padding: 22,
         background: "var(--bg-surface)",
         border: "1px solid var(--border-default)",
         borderRadius: "var(--r-lg)",
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10 }}>
         <div
           style={{
-            width: 30,
-            height: 30,
-            borderRadius: 8,
+            width: 36,
+            height: 36,
+            borderRadius: 9,
             display: "grid",
             placeItems: "center",
             background: s.bg,
             color: s.fg,
           }}
         >
-          <Icon name={icon} size={15} />
+          <Icon name={icon} size={18} />
         </div>
-        <div style={{ fontSize: 14, fontWeight: 700 }}>{title}</div>
+        <div style={{ fontSize: 16, fontWeight: 700, letterSpacing: "-0.01em" }}>{title}</div>
       </div>
       {sub && (
-        <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginBottom: 12 }}>{sub}</div>
+        <div style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 14, lineHeight: 1.45 }}>
+          {sub}
+        </div>
       )}
-      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
         {items.map((i) => (
           <div
             key={i}
             style={{
-              fontSize: 12.5,
+              fontSize: 14,
               color: "var(--text-secondary)",
               display: "flex",
               alignItems: "center",
-              gap: 8,
-              padding: "4px 0",
+              gap: 10,
+              padding: "5px 0",
+              lineHeight: 1.5,
             }}
           >
             <span
               style={{
-                width: 4,
-                height: 4,
+                width: 5,
+                height: 5,
                 borderRadius: 50,
-                background: "var(--border-strong)",
+                background: s.fg,
+                opacity: 0.6,
+                flexShrink: 0,
               }}
             />
             {i}
