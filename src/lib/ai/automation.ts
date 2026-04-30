@@ -61,23 +61,23 @@ export async function runFullPipelineFromIdea(input: FullRunInput): Promise<Full
   }
 
   try {
-    /* ─── STEP 0: idea 선택 (자동) ─── */
+    /* ─── STEP 0: idea 선택 (자동) — 다양성 weight ─── */
     let ideaId = input.ideaId
+    let forcedTemplate = input.forcedTemplate
     if (!ideaId) {
-      const { data: candidates } = await db
-        .from("ideas")
-        .select("id, fit_score")
-        .eq("project_id", input.projectId)
-        .eq("status", "shortlisted")
-        .order("fit_score", { ascending: false })
-        .limit(1)
-      if (!candidates || candidates.length === 0) {
+      const picked = await pickDiverseIdea(input.projectId)
+      if (!picked) {
         result.error = "shortlisted idea 가 없어요. 02 아이데이션에서 먼저 선정해주세요."
         return finish(result, t0)
       }
-      ideaId = candidates[0].id as string
+      ideaId = picked
     }
     result.ideaId = ideaId
+
+    /* template 자동 선택 — 최근 10편 중 적게 쓰인 것 우선 */
+    if (!forcedTemplate) {
+      forcedTemplate = await pickDiverseTemplate(input.projectId)
+    }
 
     /* ─── STEP 1: 브리프 ─── */
     result.stage = "brief"
@@ -85,7 +85,7 @@ export async function runFullPipelineFromIdea(input: FullRunInput): Promise<Full
     const briefResult = await generateAndStoreBrief({
       projectId: input.projectId,
       ideaId,
-      forcedTemplate: input.forcedTemplate,
+      forcedTemplate,
       quality: input.quality,
     })
     result.topicId = briefResult.topic.id
@@ -145,4 +145,124 @@ export async function runFullPipelineFromIdea(input: FullRunInput): Promise<Full
 function finish(r: FullRunResult, t0: number): FullRunResult {
   r.durationMs = Date.now() - t0
   return r
+}
+
+/* ════════════════════════════════════════════════════════════════
+   다양성 선택 — 같은 cluster·intent·template 가 연속 반복되지 않게
+   ════════════════════════════════════════════════════════════════ */
+
+/**
+ * shortlisted idea 중 1개 선택.
+ * - 최근 10편 콘텐츠의 cluster/intent 분포 분석
+ * - 가장 적게 사용된 cluster/intent 조합의 idea 우선
+ * - 동률이면 fit_score 최고
+ */
+async function pickDiverseIdea(projectId: string): Promise<string | null> {
+  const db = supabaseAdmin()
+
+  /* shortlisted 후보 */
+  const { data: candidates } = await db
+    .from("ideas")
+    .select("id, fit_score, cluster, signal")
+    .eq("project_id", projectId)
+    .eq("status", "shortlisted")
+    .order("fit_score", { ascending: false })
+    .limit(50)
+  if (!candidates || candidates.length === 0) return null
+
+  /* 최근 10편 콘텐츠의 cluster/intent 분포 (drafts.topic 통해 조회) */
+  const { data: recent } = await db
+    .from("drafts")
+    .select("topic_id")
+    .eq("project_id", projectId)
+    .in("status", ["approved", "published", "drafting", "reviewing"])
+    .order("created_at", { ascending: false })
+    .limit(10)
+
+  const topicIds = (recent ?? []).map((r) => r.topic_id).filter((x): x is string => !!x)
+  let recentClusters = new Map<string, number>()
+  let recentIntents = new Map<string, number>()
+  if (topicIds.length > 0) {
+    const { data: topics } = await db
+      .from("topics")
+      .select("journey_stage, idea_id")
+      .in("id", topicIds)
+    /* idea_id → ideas 의 signal.intent 추적 */
+    const topicIdeaIds = (topics ?? []).map((t) => t.idea_id).filter((x): x is string => !!x)
+    let ideaSignalMap = new Map<string, { cluster?: string; intent?: string }>()
+    if (topicIdeaIds.length > 0) {
+      const { data: ideaInfos } = await db
+        .from("ideas")
+        .select("id, cluster, signal")
+        .in("id", topicIdeaIds)
+      ideaSignalMap = new Map(
+        (ideaInfos ?? []).map((i) => [
+          i.id as string,
+          {
+            cluster: i.cluster as string | undefined,
+            intent: ((i.signal as { intent?: string } | null) ?? {}).intent,
+          },
+        ])
+      )
+    }
+    for (const t of topics ?? []) {
+      const info = t.idea_id ? ideaSignalMap.get(t.idea_id as string) : undefined
+      const cluster = info?.cluster ?? (t.journey_stage as string | undefined)
+      const intent = info?.intent
+      if (cluster) recentClusters.set(cluster, (recentClusters.get(cluster) ?? 0) + 1)
+      if (intent) recentIntents.set(intent, (recentIntents.get(intent) ?? 0) + 1)
+    }
+  }
+
+  /* 후보별 다양성 점수 = -(최근 cluster 사용 + 최근 intent 사용) → 적게 쓰일수록 ↑ */
+  const scored = candidates.map((c) => {
+    const cluster = c.cluster as string | undefined
+    const intent = ((c.signal as { intent?: string } | null) ?? {}).intent
+    const clusterPenalty = cluster ? recentClusters.get(cluster) ?? 0 : 0
+    const intentPenalty = intent ? recentIntents.get(intent) ?? 0 : 0
+    /* 다양성 보너스: 사용 빈도 적을수록 + (각 0~10편 → 페널티 0~10) */
+    const diversityBonus = -(clusterPenalty + intentPenalty) * 5
+    return {
+      id: c.id as string,
+      score: (c.fit_score ?? 0) + diversityBonus,
+    }
+  })
+  scored.sort((a, b) => b.score - a.score)
+  return scored[0]?.id ?? null
+}
+
+/**
+ * 본문 형태 자동 선택 — 최근 10편의 template 분포 보고 가장 적게 쓰인 것.
+ */
+async function pickDiverseTemplate(
+  projectId: string
+): Promise<"steps" | "compare" | "story"> {
+  const db = supabaseAdmin()
+  const { data: recent } = await db
+    .from("topics")
+    .select("tone_guide")
+    .eq("project_id", projectId)
+    .order("created_at", { ascending: false })
+    .limit(10)
+
+  const counts: Record<"steps" | "compare" | "story", number> = {
+    steps: 0,
+    compare: 0,
+    story: 0,
+  }
+  for (const t of recent ?? []) {
+    const tg = (t.tone_guide as string | null) ?? ""
+    /* tone_guide prefix 패턴: "[구조: 단계 가이드]" / "[구조: 비교 추천]" / "[구조: 스토리·Q&A]" */
+    if (tg.includes("단계 가이드")) counts.steps++
+    else if (tg.includes("비교 추천")) counts.compare++
+    else if (tg.includes("스토리")) counts.story++
+  }
+
+  /* 가장 적게 쓰인 것 선택 (동률이면 steps→compare→story 순 안정성 위해) */
+  const order: Array<"steps" | "compare" | "story"> = ["steps", "compare", "story"]
+  let best = order[0]
+  for (const t of order) {
+    if (counts[t] < counts[best]) best = t
+  }
+  return best
 }
