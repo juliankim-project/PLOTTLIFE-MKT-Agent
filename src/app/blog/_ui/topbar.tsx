@@ -31,12 +31,6 @@ export function BlogTopbar() {
         <input placeholder="주제·키워드·포스트 검색…" />
         <kbd>⌘K</kbd>
       </div>
-      <button className="bbtn bbtn--ghost bbtn--sm">
-        <Icon name="bolt" size={12} /> 자동화 로그
-      </button>
-      <button className="bbtn bbtn--primary bbtn--sm">
-        <Icon name="plus" size={12} /> 새 프로젝트
-      </button>
     </div>
   )
 }

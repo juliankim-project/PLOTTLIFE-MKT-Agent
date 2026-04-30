@@ -83,6 +83,7 @@ const navItems: NavItem[] = [
       { kind: "leaf", label: "06 · 콘텐츠 관리", href: "/blog/contents" },
       { kind: "leaf", label: "07 · 발행관리", href: "/blog/publish" },
       { kind: "leaf", label: "08 · 성과분석", href: "/blog/analyze" },
+      { kind: "leaf", label: "09 · 자동화", href: "/blog/automation" },
     ],
   },
   {
