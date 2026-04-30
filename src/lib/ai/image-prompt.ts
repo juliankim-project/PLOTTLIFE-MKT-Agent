@@ -70,7 +70,7 @@ interface GeneratedImagePrompt {
 }
 
 const STYLE_SUFFIX =
-  "Photorealistic editorial photography, warm natural window light, soft shallow depth of field, cinematic color grading, Korean urban residence aesthetic, 35mm lens, no visible text, no logos, no watermarks"
+  "Photorealistic editorial photography, warm natural window light, soft shallow depth of field, cinematic color grading, Korean urban residence aesthetic, 35mm lens, NO visible text of any kind, NO Korean characters or hangul, NO subway/metro station signs, NO street signs with text, NO building name plaques, NO storefront signage with readable text, NO logos, NO watermarks, NO brand names. Any signage if present must appear blurred, abstract, out-of-focus, or facing away from camera."
 
 /** 같은 에이전트(Creative Designer)로 여러 프롬프트를 한 번에 */
 export async function buildImagePrompts(input: BuildInput): Promise<GeneratedImagePrompt[]> {
@@ -96,6 +96,20 @@ Generate for EACH slot:
      with a foreign or Korean subject if relevant.
    - Warm natural light, editorial mood, 35mm lens, shallow DoF.
    - NO text overlays. NO logos. NO brand names visible.
+
+   ⚠️ Critical place-name rules:
+   - NEVER specify real subway stations, neighborhood names, or landmark names
+     (e.g., do NOT write "Hongdae station", "Gangnam", "Itaewon", "Myeongdong").
+     The image model cannot render correct Korean text and will produce
+     fake/garbled hangul on signs — this is a known failure mode.
+   - Use generic descriptors instead: "a quiet residential alley in Seoul",
+     "a bright cafe street in a trendy Korean neighborhood",
+     "a modern Korean officetel building exterior", etc.
+   - If a subway/transit scene is required, describe the platform, train, and
+     atmosphere WITHOUT showing station signs or location markers.
+   - Any incidental signage (storefront, street sign, station name plate)
+     should be explicitly described as blurred, out-of-focus, or facing away.
+
    - Must end with this style suffix verbatim: "${STYLE_SUFFIX}"
 2. "altKo" — a natural Korean alt text (15~30 Korean chars) describing the image.
 

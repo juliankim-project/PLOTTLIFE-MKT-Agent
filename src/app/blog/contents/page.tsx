@@ -386,7 +386,7 @@ export default function ContentsPage() {
       <PageHeader
         eyebrow="STAGE 06 · CONTENTS"
         title="콘텐츠 관리"
-        sub="검수에서 저장된 글들을 관리합니다. 각 콘텐츠의 발행 세팅을 모달에서 지정하세요."
+        sub="검수에서 저장된 글들을 관리합니다. 각 콘텐츠의 어드민 전송은 행의 토글로, 미리보기는 우측 버튼으로 확인하세요."
         actions={[
           { label: "← 검수", href: "/blog/review" },
           { label: "발행관리로 →", primary: true, href: "/blog/publish" },
@@ -895,11 +895,11 @@ export default function ContentsPage() {
                           <Icon name="pen" size={11} /> 편집
                         </button>
                         <button
-                          className="bbtn bbtn--primary bbtn--sm"
+                          className="bbtn bbtn--ghost bbtn--sm"
                           onClick={() => setModalId(d.id)}
-                          title="발행 세팅"
+                          title="미리보기 (어드민 + web 화면)"
                         >
-                          <Icon name="send" size={11} /> 발행 세팅
+                          <Icon name="eye" size={11} /> 미리보기
                         </button>
                         <button
                           className="bbtn bbtn--ghost bbtn--sm content-row__del"

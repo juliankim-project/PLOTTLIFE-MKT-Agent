@@ -103,8 +103,8 @@ export function PublishSettingModal({ draft, topic, onClose }: Props) {
         style={{
           background: "white",
           borderRadius: 16,
-          width: "min(880px, 100%)",
-          maxHeight: "calc(100vh - 48px)",
+          width: "min(640px, 100%)",
+          maxHeight: "calc(100vh - 80px)",
           overflow: "auto",
           boxShadow:
             "0 1px 3px rgba(15, 23, 42, 0.1), 0 24px 60px rgba(15, 23, 42, 0.30), 0 0 0 1px rgba(15, 23, 42, 0.06)",
@@ -122,7 +122,7 @@ export function PublishSettingModal({ draft, topic, onClose }: Props) {
         {/* 헤더 */}
         <div
           style={{
-            padding: "18px 24px 14px",
+            padding: "14px 18px 12px",
             background: "linear-gradient(180deg, #fafbff 0%, #ffffff 100%)",
             borderBottom: "1px solid #eef0ff",
             display: "flex",
@@ -141,7 +141,7 @@ export function PublishSettingModal({ draft, topic, onClose }: Props) {
                 marginBottom: 4,
               }}
             >
-              발행 미리보기 · 플라트라이프 어드민
+              미리보기 · 어드민 + web
             </div>
             <div
               style={{
@@ -184,7 +184,7 @@ export function PublishSettingModal({ draft, topic, onClose }: Props) {
         </div>
 
         {/* 바디 — 미리보기 2개만 (카테고리/토글은 콘텐츠 관리 칼럼으로 빠짐) */}
-        <div style={{ padding: "20px 24px", display: "flex", flexDirection: "column", gap: 22 }}>
+        <div style={{ padding: "14px 18px", display: "flex", flexDirection: "column", gap: 14 }}>
           {/* 어드민 콘텐츠 매니저 미리보기 */}
           <section>
             <SectionLabel num="1" label="어드민 콘텐츠 매니저에 이렇게 보입니다" />
@@ -201,7 +201,7 @@ export function PublishSettingModal({ draft, topic, onClose }: Props) {
         {/* 푸터 — 닫기만 */}
         <div
           style={{
-            padding: "14px 24px",
+            padding: "12px 18px",
             borderTop: "1px solid #eef0ff",
             display: "flex",
             gap: 8,
