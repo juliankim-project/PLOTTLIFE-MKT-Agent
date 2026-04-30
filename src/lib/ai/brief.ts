@@ -14,6 +14,8 @@ interface BriefInput {
   ideaId: string
   targetKpi?: "conversion" | "traffic" | "dwell_time"
   quality?: "flash" | "pro"
+  /** 사용자가 본문 형태를 강제 — 자동(undefined) 또는 3가지 중 1개 */
+  forcedTemplate?: "steps" | "compare" | "story"
 }
 
 interface GeneratedBrief {
@@ -96,8 +98,10 @@ ${styleGuide}
 [요구사항]
 이 주제로 실제 블로그 본문을 작성할 Copywriter 에이전트에게 넘길 상세 브리프를 JSON 으로 작성해줘.
 
-[📐 템플릿 — 3가지 중 1개를 선택해 outline 구성]
-주제와 카테고리 성격에 맞춰 아래 3가지 템플릿 중 가장 자연스러운 것을 선택하고, 그 구조로 H2/H3 를 짜라. **매번 같은 패턴 반복 금지** — 주제마다 다른 호흡으로.
+[📐 템플릿 — ${input.forcedTemplate ? `**사용자가 \"${input.forcedTemplate}\" 강제 지정**` : "3가지 중 1개를 선택해 outline 구성"}]
+${input.forcedTemplate
+  ? `사용자가 \`${input.forcedTemplate}\` 템플릿으로 강제 지정함. 다른 템플릿 선택 금지.\n응답의 \`template\` 필드에는 반드시 \`"${input.forcedTemplate}"\` 만 작성.`
+  : "주제와 카테고리 성격에 맞춰 아래 3가지 템플릿 중 가장 자연스러운 것을 선택하고, 그 구조로 H2/H3 를 짜라. **매번 같은 패턴 반복 금지** — 주제마다 다른 호흡으로."}
 
 ▸ **A. 가이드형 (Steps)** — 절차·체크리스트·실행이 핵심인 주제 (입주 가이드, 비자, ARC, 계약 등)
    구조: ① 왜 알아야 하나(훅) → ② Step 1 → Step 2 → Step 3 → ③ 실행 체크리스트 → ④ 플라트 차별점 (마무리)
@@ -172,9 +176,12 @@ ${styleGuide}
     target_kpi: ["conversion", "traffic", "dwell_time"].includes(parsed.target_kpi)
       ? parsed.target_kpi
       : "traffic",
-    template: ["steps", "compare", "story"].includes(parsed.template ?? "")
-      ? parsed.template
-      : "steps",
+    /* forcedTemplate 가 있으면 무조건 그 값. 없으면 LLM 응답 → 폴백 "steps" */
+    template: input.forcedTemplate ?? (
+      ["steps", "compare", "story"].includes(parsed.template ?? "")
+        ? parsed.template
+        : "steps"
+    ),
     tone_guide: String(parsed.tone_guide ?? ""),
     outline: parsed.outline.slice(0, 20).map((o) => ({
       heading: String(o.heading ?? "").slice(0, 200),
