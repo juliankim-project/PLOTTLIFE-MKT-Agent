@@ -24,6 +24,11 @@ interface WriteInput {
  */
 function stripTrailingSourcesSection(md: string): string {
   let s = md
+
+  /* 0) HTML <br>, <p></p>, <div></div> 등 제거 — markdown 본문에 섞이면 텍스트로 노출됨 */
+  s = s.replace(/<br\s*\/?>/gi, "")
+  s = s.replace(/<\/?(p|div|span)[^>]*>/gi, "")
+
   /* 1) 명시적 헤딩 (## / ### / **) — 그 다음 모든 라인 절단 */
   s = s.replace(
     /\n+(?:[#]{1,6}\s*|\*\*\s*)(?:📚\s*)?(?:참고\s*(?:출처|자료|문헌)|References?)\s*[:.]*\s*\*{0,2}\s*\n[\s\S]*$/i,
@@ -40,7 +45,11 @@ function stripTrailingSourcesSection(md: string): string {
     /\n+(?:[-•*]\s*)?\[?(?:vertexaisearch\.cloud\.google\.com|googleusercontent\.com|google\.com\/url)[^\n]*$/gim,
     ""
   )
-  return s.trimEnd()
+
+  /* 4) 끝부분의 빈 줄 / 잔존 공백 / 잔존 <br> 제거 */
+  s = s.replace(/(\n\s*){3,}/g, "\n\n")  // 3줄+ 빈줄 → 2줄
+  s = s.replace(/\s+$/, "")               // trailing whitespace
+  return s
 }
 
 export async function writeAndStoreDraft(input: WriteInput) {
@@ -196,6 +205,7 @@ ${styleGuideForPrompt({ withImageSlots: true })}
 7. 전체 ${topic.brief ?? "2200~3000자"} 범위 유지
 8. **본문에 외부 URL·링크 삽입 절대 금지** — 출처는 글 끝에 자동 첨부됨. 본문에서는 "(2026년 출입국·외국인청 기준)" 같이 기관명+시기 텍스트로만 인용
 8-1. **참고 출처/자료/References 섹션 절대 만들지 마** — 본문 끝에 시스템이 자동으로 "📚 참고 출처" 섹션을 첨부하므로, LLM 이 같은 섹션을 만들면 중복됨. "## 참고 출처", "참고 자료:", "References:" 등 어떤 형식으로도 출처 목록 섹션을 작성하지 말 것.
+8-2. **HTML 태그 절대 사용 금지** — \`<br>\`, \`<p>\`, \`<div>\`, \`<span>\` 등 어떤 HTML 태그도 본문에 박지 마. 줄바꿈은 마크다운 빈 줄(\\n\\n)로, 강조는 \`**bold**\`, 단락 분리는 빈 줄. 다른 곳 글에서 HTML 본 적 있더라도, 여기는 **순수 마크다운만**.
 9. **타사·경쟁사 브랜드명·약관·서비스명 인용 절대 금지** (콜아웃·표·체크리스트·본문·참고 출처 어디에도)
    - ❌ 호텔/리조트 체인 (켄싱턴, 롯데호텔, 신라호텔, 메리어트, 힐튼 등)
    - ❌ 숙박 OTA·플랫폼 (야놀자, 여기어때, 에어비앤비, 부킹닷컴, 아고다 등)
@@ -512,6 +522,7 @@ ${feedbackLines.map((l, i) => `${i + 1}. ${l}`).join("\n")}
 7. 본문 끝에 "참고 출처" 섹션 만들지 말 것 — 시스템이 자동 첨부
 8. 외부 URL·링크 본문 삽입 금지
 9. 타사·경쟁사 브랜드명 직접 언급 금지
+10. **HTML 태그 절대 사용 금지** (\`<br>\`, \`<p>\`, \`<div>\` 등) — 순수 마크다운만
 
 ${styleGuideForPrompt({ withImageSlots: false })}
 
