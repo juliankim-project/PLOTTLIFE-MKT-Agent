@@ -8,14 +8,7 @@ export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 export const maxDuration = 30
 
-const SEND_WHEN = [
-  "immediate",
-  "after-5min",
-  "after-15min",
-  "after-30min",
-  "after-1hour",
-  "next-day-midnight",
-] as const
+const SEND_WHEN = ["immediate", "next-day-midnight"] as const
 
 const sendSchema = z.object({
   action: z.literal("send"),
@@ -223,13 +216,8 @@ export async function POST(req: Request) {
 }
 
 function computeScheduledAt(when: (typeof SEND_WHEN)[number]): Date {
-  const now = Date.now()
   switch (when) {
-    case "immediate":   return new Date(now)
-    case "after-5min":  return new Date(now + 5 * 60 * 1000)
-    case "after-15min": return new Date(now + 15 * 60 * 1000)
-    case "after-30min": return new Date(now + 30 * 60 * 1000)
-    case "after-1hour": return new Date(now + 60 * 60 * 1000)
+    case "immediate":         return new Date()
     case "next-day-midnight": return computeNextKstMidnight()
   }
 }

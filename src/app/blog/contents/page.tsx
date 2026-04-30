@@ -42,23 +42,18 @@ interface DraftItem {
   updated_at: string
 }
 
-type DabSendWhen =
-  | "immediate"
-  | "after-5min"
-  | "after-15min"
-  | "after-30min"
-  | "after-1hour"
-  | "next-day-midnight"
+type DabSendWhen = "immediate" | "next-day-midnight"
 type DabSendStatus = "queued" | "sending" | "sent" | "failed"
 
 const DAB_SEND_WHEN_OPTIONS: Array<{ value: DabSendWhen; label: string }> = [
   { value: "immediate",         label: "즉시" },
-  { value: "after-5min",        label: "5분 뒤" },
-  { value: "after-15min",       label: "15분 뒤" },
-  { value: "after-30min",       label: "30분 뒤" },
-  { value: "after-1hour",       label: "1시간 뒤" },
-  { value: "next-day-midnight", label: "다음날 00시" },
+  { value: "next-day-midnight", label: "다음날 00시 (KST)" },
 ]
+
+/** 기존 데이터에 옛 옵션 값이 있을 수 있어 안전한 fallback */
+function safeWhen(v: unknown): DabSendWhen {
+  return v === "next-day-midnight" ? "next-day-midnight" : "immediate"
+}
 
 const DAB_SEND_STATUS_LABEL: Record<DabSendStatus | "idle", { label: string; emoji: string; bg: string; fg: string; border: string }> = {
   idle:    { label: "—",         emoji: "",   bg: "#f9fafb", fg: "#9ca3af", border: "#e5e7eb" },
@@ -346,7 +341,7 @@ export default function ContentsPage() {
           primaryKeyword: draft.primary_keyword,
           secondaryKeywords: draft.secondary_keywords,
         })
-      const when: DabSendWhen = draft.metadata?.dab_send_when ?? "immediate"
+      const when: DabSendWhen = safeWhen(draft.metadata?.dab_send_when)
 
       if (when === "immediate") {
         const meta = await callDabApi({ action: "send", draftId: draft.id, category })
@@ -787,7 +782,7 @@ export default function ContentsPage() {
                   </span>
                   {/* 전송 시점 (드롭다운) */}
                   <select
-                    value={d.metadata?.dab_send_when ?? "immediate"}
+                    value={safeWhen(d.metadata?.dab_send_when)}
                     onChange={(e) => handleChangeWhen(d, e.target.value as DabSendWhen)}
                     disabled={d.metadata?.dab_send_status === "sent" || d.metadata?.dab_send_status === "sending"}
                     style={{
