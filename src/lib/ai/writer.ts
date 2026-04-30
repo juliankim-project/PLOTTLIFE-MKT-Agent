@@ -9,6 +9,7 @@ import { supabaseAdmin } from "@/lib/supabase/server"
 import { runAgent } from "./agents"
 import { styleGuideForPrompt, povBlockForPrompt, JOURNEY_STAGE_POV, type JourneyStage } from "../blog-style"
 import { formatSourceSection, groupSources, isAllowedSource } from "./source-format"
+import { pickDabCategory } from "../dab/category"
 
 interface WriteInput {
   projectId: string
@@ -287,6 +288,15 @@ G) **순서·단계** — \`### Step 1\` / \`### Step 2\` 형태로 절차 명�
         grounded: true,
         source_count: sources.length,
         sources: sources.slice(0, 20), // 보존 (UI에서 출처 카드 등 활용 가능)
+        /* 콘텐츠 관리 페이지 카테고리 칼럼용 — 자동 매핑 결과 보존 */
+        dab_category: pickDabCategory({
+          title: topic.title,
+          primaryKeyword: topic.primary_keyword,
+          secondaryKeywords: topic.secondary_keywords,
+          journeyStage: topic.journey_stage,
+        }),
+        /* 어드민 발행 상태 — 검수 후 콘텐츠 관리에 들어왔을 때 디폴트 OFF */
+        dab_status: null,
       },
     })
     .select()

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { Icon, PageHeader } from "../_ui"
 import { readCache, writeCache } from "../_lib/cache"
-import { PublishSettingModal } from "./_components/publish-modal"
+import { PublishSettingModal, ToggleSwitch } from "./_components/publish-modal"
 import { pickDabCategory } from "@/lib/dab/category"
 
 interface DraftItem {
@@ -30,9 +30,34 @@ interface DraftItem {
     dab_status?: "DRAFT" | "PUBLISHED"
     dab_category?: string
     dab_registered_at?: string
+    /* Phase 6 — 어드민 전송 모델 */
+    dab_send_intent?: boolean       // 토글 ON/OFF (사용자 의도)
+    dab_send_when?: DabSendWhen     // 즉시 / 5분 뒤 / 10분 뒤 / 1시간 뒤
+    dab_send_status?: DabSendStatus // 대기 / 전송 중 / 완료 / 실패
+    dab_send_scheduled_at?: string | null  // 예약 시각
+    dab_send_at?: string | null     // 실제 전송 시각
+    dab_send_error?: string | null  // 실패 시 에러 메시지
   } | null
   created_at: string
   updated_at: string
+}
+
+type DabSendWhen = "immediate" | "after-5min" | "after-10min" | "after-1hour"
+type DabSendStatus = "queued" | "sending" | "sent" | "failed"
+
+const DAB_SEND_WHEN_OPTIONS: Array<{ value: DabSendWhen; label: string; enabled: boolean }> = [
+  { value: "immediate",   label: "즉시",       enabled: true },
+  { value: "after-5min",  label: "5분 뒤",    enabled: false },
+  { value: "after-10min", label: "10분 뒤",   enabled: false },
+  { value: "after-1hour", label: "1시간 뒤",  enabled: false },
+]
+
+const DAB_SEND_STATUS_LABEL: Record<DabSendStatus | "idle", { label: string; emoji: string; bg: string; fg: string; border: string }> = {
+  idle:    { label: "—",         emoji: "",   bg: "#f9fafb", fg: "#9ca3af", border: "#e5e7eb" },
+  queued:  { label: "대기",      emoji: "⏳", bg: "#fffbeb", fg: "#b45309", border: "#fde68a" },
+  sending: { label: "전송 중",   emoji: "⏱",  bg: "#eff6ff", fg: "#1d4ed8", border: "#bfdbfe" },
+  sent:    { label: "전송 완료", emoji: "✅", bg: "#ecfdf5", fg: "#047857", border: "#a7f3d0" },
+  failed:  { label: "실패",      emoji: "❌", bg: "#fef2f2", fg: "#b91c1c", border: "#fecaca" },
 }
 
 type StatusFilter = "all" | "approved" | "scheduled" | "published" | "trash"
@@ -45,19 +70,6 @@ const STATUS_LABEL: Record<string, { label: string; color: string; bg: string; b
   reviewing: { label: "검수 중",  color: "#7c3aed", bg: "#f5f3ff", border: "#ddd6fe" },
   rewriting: { label: "재작성",   color: "#92400e", bg: "#fffbeb", border: "#fde68a" },
   discarded: { label: "휴지통",   color: "#991b1b", bg: "#fef2f2", border: "#fecaca" },
-}
-
-/** 대브 어드민 등록 상태 (drafts.metadata.dab_status 기준) — 콘텐츠 매니저 양식과 통일 */
-const DAB_STATUS_LABEL: Record<"none" | "DRAFT" | "PUBLISHED", { label: string; color: string; bg: string; border: string }> = {
-  none:       { label: "미등록",   color: "#6b7280", bg: "#f3f4f6", border: "#e5e7eb" },
-  DRAFT:      { label: "임시저장", color: "#6b7280", bg: "#ffffff", border: "#cbd5e1" },
-  PUBLISHED:  { label: "게시 중",  color: "#047857", bg: "#d1fae5", border: "#a7f3d0" },
-}
-
-function getDabStatus(d: DraftItem): "none" | "DRAFT" | "PUBLISHED" {
-  if (d.metadata?.dab_status === "PUBLISHED") return "PUBLISHED"
-  if (d.metadata?.dab_status === "DRAFT") return "DRAFT"
-  return "none"
 }
 
 async function safeFetchJson<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
@@ -284,35 +296,85 @@ export default function ContentsPage() {
     }
   }
 
-  /** 발행세팅 모달 → 어드민 등록 (mock 또는 실제 호출) */
-  const handleDabPublish = async (input: {
-    category: import("@/lib/dab/category").DabCategory
-    status: "DRAFT" | "PUBLISHED"
-  }) => {
-    if (!modalId) return
+  /** "보낼까요?" 토글 — ON 누르면 즉시 또는 예약, OFF 누르면 metadata 만 클리어 */
+  const [togglingId, setTogglingId] = useState<string | null>(null)
+
+  const callDabApi = async (body: object): Promise<DraftItem["metadata"] | null> => {
+    const j = await safeFetchJson<{
+      ok: boolean
+      error?: string
+      metadata?: DraftItem["metadata"]
+    }>("/api/dab/publish", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    })
+    if (!j.ok || !j.metadata) throw new Error(j.error ?? "API 호출 실패")
+    return j.metadata
+  }
+
+  const updateDraftMetadata = (draftId: string, metadata: DraftItem["metadata"]) => {
+    const next = contents.map((d) => (d.id === draftId ? { ...d, metadata } : d))
+    setContents(next)
+    syncCacheNow(next, trashed)
+  }
+
+  const handleToggleSendIntent = async (draft: DraftItem, nextOn: boolean) => {
+    setTogglingId(draft.id)
     setError(null)
     try {
-      const j = await safeFetchJson<{
-        ok: boolean
-        error?: string
-        metadata?: DraftItem["metadata"]
-      }>("/api/dab/publish", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ draftId: modalId, category: input.category, status: input.status }),
-      })
-      if (!j.ok || !j.metadata) throw new Error(j.error ?? "어드민 등록 실패")
+      if (!nextOn) {
+        /* OFF — metadata 만 클리어 (어드민 호출 X, dab_blog_id 유지) */
+        const meta = await callDabApi({ action: "untoggle", draftId: draft.id })
+        if (meta) updateDraftMetadata(draft.id, meta)
+        return
+      }
 
-      /* optimistic 업데이트 — metadata 반영 */
-      const nextContents = contents.map((d) =>
-        d.id === modalId ? { ...d, metadata: j.metadata as DraftItem["metadata"] } : d
-      )
-      setContents(nextContents)
-      syncCacheNow(nextContents, trashed)
-      setModalId(null)
+      /* ON — 카테고리 결정 + when 에 따라 분기 */
+      const category =
+        (draft.metadata?.dab_category as import("@/lib/dab/category").DabCategory) ??
+        pickDabCategory({
+          title: draft.title,
+          primaryKeyword: draft.primary_keyword,
+          secondaryKeywords: draft.secondary_keywords,
+        })
+      const when: DabSendWhen = draft.metadata?.dab_send_when ?? "immediate"
+
+      if (when === "immediate") {
+        const meta = await callDabApi({ action: "send", draftId: draft.id, category })
+        if (meta) updateDraftMetadata(draft.id, meta)
+      } else {
+        /* 예약 — queued 상태로 metadata 업데이트 (실제 발송은 다음 PR 워커) */
+        const meta = await callDabApi({ action: "schedule", draftId: draft.id, category, when })
+        if (meta) updateDraftMetadata(draft.id, meta)
+      }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "어드민 등록 실패")
-      throw e // 모달이 busy 상태 풀게 throw
+      setError(e instanceof Error ? e.message : "토글 처리 실패")
+    } finally {
+      setTogglingId(null)
+    }
+  }
+
+  const handleChangeWhen = async (draft: DraftItem, when: DabSendWhen) => {
+    setError(null)
+    try {
+      /* 토글 ON 상태에서 when 변경하면 다시 schedule 호출, OFF 면 set-when 만 */
+      const action: "schedule" | "set-when" = draft.metadata?.dab_send_intent ? "schedule" : "set-when"
+      const category =
+        (draft.metadata?.dab_category as import("@/lib/dab/category").DabCategory) ??
+        pickDabCategory({
+          title: draft.title,
+          primaryKeyword: draft.primary_keyword,
+          secondaryKeywords: draft.secondary_keywords,
+        })
+      const meta = await callDabApi(
+        action === "schedule"
+          ? { action, draftId: draft.id, category, when }
+          : { action, draftId: draft.id, when }
+      )
+      if (meta) updateDraftMetadata(draft.id, meta)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "예약 시간 변경 실패")
     }
   }
 
@@ -516,7 +578,7 @@ export default function ContentsPage() {
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "32px 60px 1fr 110px 100px 110px 220px",
+              gridTemplateColumns: "32px 54px 1fr 100px 80px 110px 110px 90px 170px",
               gap: 12,
               alignItems: "center",
               padding: "8px 20px",
@@ -543,7 +605,9 @@ export default function ContentsPage() {
             <div>썸네일</div>
             <div>제목 / 작성자</div>
             <div>카테고리</div>
-            <div>상태</div>
+            <div>드래프트로 보낼까요?</div>
+            <div>언제</div>
+            <div>전송 상태</div>
             <div>업데이트</div>
             <div style={{ textAlign: "right" }}>액션</div>
           </div>
@@ -581,8 +645,6 @@ export default function ContentsPage() {
         ) : (
           <div>
             {visible.map((d) => {
-              const dabStatus = getDabStatus(d)
-              const dabSt = DAB_STATUS_LABEL[dabStatus]
               const dabCategory = d.metadata?.dab_category ?? pickDabCategory({
                 title: d.title,
                 primaryKeyword: d.primary_keyword,
@@ -595,13 +657,13 @@ export default function ContentsPage() {
                   className="content-row"
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "32px 60px 1fr 110px 100px 110px 220px",
+                    gridTemplateColumns: "32px 54px 1fr 100px 80px 110px 110px 90px 170px",
                     gap: 12,
                     alignItems: "center",
                     padding: "12px 20px",
                     borderBottom: "1px solid var(--border-subtle)",
                     background: checked ? "var(--brand-50)" : undefined,
-                    opacity: dabStatus === "DRAFT" ? 0.85 : 1,
+                    opacity: 1,
                   }}
                 >
                   <div style={{ textAlign: "center" }}>
@@ -691,21 +753,65 @@ export default function ContentsPage() {
                   >
                     {dabCategory}
                   </span>
-                  {/* 상태 (대브 등록 상태 기준) */}
-                  <span
+                  {/* 보낼까요? (토글) */}
+                  <div style={{ justifySelf: "start" }}>
+                    <ToggleSwitch
+                      on={!!d.metadata?.dab_send_intent}
+                      busy={togglingId === d.id}
+                      onToggle={() =>
+                        handleToggleSendIntent(d, !d.metadata?.dab_send_intent)
+                      }
+                      label={`${d.title} 드래프트로 보낼까요`}
+                    />
+                  </div>
+                  {/* 언제 (드롭다운) */}
+                  <select
+                    value={d.metadata?.dab_send_when ?? "immediate"}
+                    onChange={(e) => handleChangeWhen(d, e.target.value as DabSendWhen)}
+                    disabled={d.metadata?.dab_send_status === "sent" || d.metadata?.dab_send_status === "sending"}
                     style={{
-                      background: dabSt.bg,
-                      color: dabSt.color,
-                      border: `1px solid ${dabSt.border}`,
-                      fontSize: 10.5,
-                      fontWeight: 700,
-                      padding: "3px 9px",
-                      borderRadius: 999,
-                      justifySelf: "start",
+                      fontSize: 11.5,
+                      padding: "5px 8px",
+                      border: "1px solid var(--border-default)",
+                      borderRadius: 6,
+                      background: "white",
+                      color: "var(--text-primary)",
+                      cursor: "pointer",
+                      width: "100%",
                     }}
                   >
-                    {dabStatus === "PUBLISHED" ? "🟢 " : ""}{dabSt.label}
-                  </span>
+                    {DAB_SEND_WHEN_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value} disabled={!opt.enabled}>
+                        {opt.label}{opt.enabled ? "" : " (곧 지원)"}
+                      </option>
+                    ))}
+                  </select>
+                  {/* 전송 상태 */}
+                  {(() => {
+                    const sendStatus = d.metadata?.dab_send_status ?? "idle"
+                    const meta = DAB_SEND_STATUS_LABEL[sendStatus]
+                    return (
+                      <span
+                        title={d.metadata?.dab_send_error ?? undefined}
+                        style={{
+                          background: meta.bg,
+                          color: meta.fg,
+                          border: `1px solid ${meta.border}`,
+                          fontSize: 10.5,
+                          fontWeight: 700,
+                          padding: "3px 9px",
+                          borderRadius: 999,
+                          justifySelf: "start",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 4,
+                        }}
+                      >
+                        {meta.emoji && <span>{meta.emoji}</span>}
+                        {meta.label}
+                      </span>
+                    )
+                  })()}
                   {/* 업데이트 */}
                   <span style={{ fontSize: 11.5, color: "var(--text-muted)" }}>
                     {new Date(d.updated_at).toLocaleDateString("ko-KR", {
@@ -773,12 +879,11 @@ export default function ContentsPage() {
         )}
       </div>
 
-      {/* 발행 세팅 모달 — 플라트라이프 어드민 단일 채널 */}
+      {/* 발행 미리보기 모달 — 어드민/web 화면 미리보기만 */}
       {currentModal && (
         <PublishSettingModal
           draft={currentModal}
           onClose={() => setModalId(null)}
-          onSubmit={handleDabPublish}
         />
       )}
 
@@ -786,6 +891,9 @@ export default function ContentsPage() {
         :global(.content-row:hover) {
           background: var(--bg-subtle);
         }
+      `}</style>
+      <style jsx global>{`
+        @keyframes spin { to { transform: rotate(360deg); } }
       `}</style>
     </div>
   )
