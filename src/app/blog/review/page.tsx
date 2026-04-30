@@ -146,6 +146,32 @@ export default function ReviewPage() {
     else setReview(null)
   }, [selectedId, loadReview])
 
+  /* 검수 피드백 반영 재작성 → 자동 재검수 */
+  const [rewriting, setRewriting] = useState(false)
+  const runRewrite = async () => {
+    if (!selectedId || !review) return
+    if (!confirm("검수 피드백을 반영해 본문을 다시 작성합니다.\n원본 본문은 덮어써집니다. 계속할까요?")) return
+    setRewriting(true)
+    setError(null)
+    try {
+      const j = await safeFetchJson<{ ok: boolean; error?: string; result?: { feedbackCount: number; rewriteCount: number } }>(
+        `/api/drafts/${selectedId}/rewrite`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ quality }),
+        }
+      )
+      if (!j.ok || !j.result) throw new Error(j.error ?? "재작성 실패")
+      /* 자동 재검수 */
+      await runAnalysis()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "재작성 실패")
+    } finally {
+      setRewriting(false)
+    }
+  }
+
   /* AI 검수 실행 */
   const runAnalysis = async () => {
     if (!selectedId) return
@@ -372,10 +398,30 @@ export default function ReviewPage() {
                     style={qualBtnStyle(quality === "pro")}
                   >🧠 Pro</button>
                 </div>
+                {review && (
+                  <button
+                    type="button"
+                    className="bbtn bbtn--default bbtn--sm"
+                    onClick={runRewrite}
+                    disabled={rewriting || analyzing || !selected}
+                    title="검수 피드백을 본문에 반영해 다시 작성 + 자동 재검수"
+                    style={{
+                      background: "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)",
+                      color: "white",
+                      border: 0,
+                    }}
+                  >
+                    {rewriting ? (
+                      <><Spinner /> 재작성 + 재검수 중…</>
+                    ) : (
+                      <>🔁 검수 반영 재작성</>
+                    )}
+                  </button>
+                )}
                 <button
                   className="bbtn bbtn--primary bbtn--sm"
                   onClick={runAnalysis}
-                  disabled={analyzing || !selected}
+                  disabled={analyzing || rewriting || !selected}
                 >
                   {analyzing ? (
                     <><Spinner /> 분석 중…</>
