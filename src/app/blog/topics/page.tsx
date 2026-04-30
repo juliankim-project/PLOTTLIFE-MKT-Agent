@@ -76,6 +76,8 @@ export default function TopicsPage() {
   const [generating, setGenerating] = useState(false)
   const [approving, setApproving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  /* 본문 형태 — auto 또는 3가지 강제 */
+  const [forcedTemplate, setForcedTemplate] = useState<"auto" | "steps" | "compare" | "story">("auto")
 
   const loadShortlist = useCallback(async () => {
     setLoading(true)
@@ -112,7 +114,10 @@ export default function TopicsPage() {
         {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ ideaId: selectedIdeaId }),
+          body: JSON.stringify({
+            ideaId: selectedIdeaId,
+            forcedTemplate: forcedTemplate === "auto" ? undefined : forcedTemplate,
+          }),
         }
       )
       if (!j.ok || !j.result) throw new Error(j.error ?? "브리프 생성 실패")
@@ -326,6 +331,48 @@ export default function TopicsPage() {
                   {selectedIdea.fit_score != null && (
                     <span className="bchip bchip--brand">fit {selectedIdea.fit_score}</span>
                   )}
+                </div>
+              </div>
+            )}
+
+            {/* 본문 형태 선택 */}
+            {!brief && (
+              <div style={{ marginBottom: 12 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 8 }}>
+                  본문 형태
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 6 }}>
+                  {([
+                    { value: "auto", emoji: "🤖", label: "자동", desc: "주제 성격에 맞춰 AI 가 선택" },
+                    { value: "steps", emoji: "📖", label: "가이드형", desc: "절차·체크리스트 (입주/비자/계약)" },
+                    { value: "compare", emoji: "⚖️", label: "비교/추천", desc: "선택지 비교 (동네·매물·옵션)" },
+                    { value: "story", emoji: "💬", label: "스토리/Q&A", desc: "후기·생활 팁·FAQ" },
+                  ] as const).map((opt) => {
+                    const on = forcedTemplate === opt.value
+                    return (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => setForcedTemplate(opt.value)}
+                        style={{
+                          padding: "10px 12px",
+                          textAlign: "left",
+                          border: `1.5px solid ${on ? "var(--brand-500)" : "var(--border-default)"}`,
+                          background: on ? "var(--brand-50, #eef2ff)" : "white",
+                          borderRadius: 8,
+                          cursor: "pointer",
+                          transition: "all 0.12s",
+                        }}
+                      >
+                        <div style={{ fontSize: 13, fontWeight: 700, color: on ? "var(--brand-800, #3730a3)" : "var(--text-primary)" }}>
+                          {opt.emoji} {opt.label}
+                        </div>
+                        <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2, lineHeight: 1.4 }}>
+                          {opt.desc}
+                        </div>
+                      </button>
+                    )
+                  })}
                 </div>
               </div>
             )}
