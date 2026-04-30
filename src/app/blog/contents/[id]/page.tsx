@@ -38,6 +38,28 @@ export default function ContentsEditor() {
   const [saving, setSaving] = useState(false)
   const [savedAt, setSavedAt] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [copying, setCopying] = useState(false)
+  const [copyMsg, setCopyMsg] = useState<string | null>(null)
+
+  /** 어드민 Tiptap 에 붙여넣을 HTML 클립보드 복사 */
+  const handleCopyHtml = async () => {
+    if (!body) return
+    setCopying(true)
+    try {
+      const { marked } = await import("marked")
+      marked.use({ gfm: true, breaks: false })
+      /* IMAGE_SLOT 주석 제거 (혹시 남아있으면) */
+      const cleaned = body.replace(/<!--\s*IMAGE_SLOT_\d+\s*:[^>]*-->/g, "")
+      const html = (marked.parse(cleaned, { async: false }) as string).trim()
+      await navigator.clipboard.writeText(html)
+      setCopyMsg("✅ 어드민용 HTML 복사됨 — Tiptap 에디터에 Ctrl+V (또는 ⌘+V) 로 붙여넣기")
+      setTimeout(() => setCopyMsg(null), 5000)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "복사 실패")
+    } finally {
+      setCopying(false)
+    }
+  }
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -153,6 +175,10 @@ export default function ContentsEditor() {
         actions={[
           { label: "← 목록", href: "/blog/contents" },
           {
+            label: copying ? "변환 중…" : "📋 어드민용 HTML 복사",
+            onClick: handleCopyHtml,
+          },
+          {
             label: saving ? "저장 중…" : "💾 저장",
             onClick: save,
           },
@@ -181,6 +207,23 @@ export default function ContentsEditor() {
           }}
         >
           ⚠️ {error}
+        </div>
+      )}
+
+      {copyMsg && (
+        <div
+          style={{
+            marginBottom: 14,
+            padding: "10px 14px",
+            background: "#ecfdf5",
+            border: "1px solid #a7f3d0",
+            color: "#047857",
+            borderRadius: 8,
+            fontSize: 13,
+            fontWeight: 600,
+          }}
+        >
+          {copyMsg}
         </div>
       )}
 

@@ -302,29 +302,8 @@ export default function AutomationPage() {
           </div>
         </div>
 
-        {/* 안내 카드 */}
-        <div className="bcard">
-          <div className="bcard__header">
-            <div>
-              <div className="bcard__title">스케줄 설정</div>
-              <div className="bcard__sub">정해진 시간에 반복 실행 (Anthropic 클라우드)</div>
-            </div>
-          </div>
-          <div style={{ padding: "16px 20px", fontSize: 12.5, color: "var(--text-secondary)", lineHeight: 1.7 }}>
-            <p style={{ marginBottom: 10 }}>
-              <b style={{ color: "var(--text-primary)" }}>Claude Code <code>/schedule</code></b> 로 매일·주간 자동 실행 등록 가능. PC 가 꺼져 있어도 Anthropic 클라우드에서 실행됩니다.
-            </p>
-            <div style={{ padding: 10, background: "var(--bg-subtle)", borderRadius: 6, fontFamily: "ui-monospace, monospace", fontSize: 11 }}>
-              /schedule &quot;매일 09:00&quot; &quot;자동화 페이지의 자동 실행 버튼 눌러서 1편 만들어줘&quot;
-            </div>
-            <p style={{ marginTop: 12 }}>
-              또는 직접 API 호출:
-            </p>
-            <div style={{ padding: 10, background: "var(--bg-subtle)", borderRadius: 6, fontFamily: "ui-monospace, monospace", fontSize: 11 }}>
-              POST /api/automation/full-run
-            </div>
-          </div>
-        </div>
+        {/* 스케줄 설정 카드 */}
+        <ScheduleCard />
       </div>
 
       {/* 실행 내역 */}
@@ -421,6 +400,214 @@ export default function AutomationPage() {
       <style jsx global>{`
         @keyframes spin { to { transform: rotate(360deg); } }
       `}</style>
+    </div>
+  )
+}
+
+/* ─── 스케줄 명령 생성기 ───────────────────────────────────────
+   사용자가 라디오 + 시간 선택 → cron expression + Claude /schedule
+   명령어 자동 생성. 클립보드 복사 버튼 포함.
+   PC 꺼져 있어도 Anthropic 클라우드에서 실행. */
+function ScheduleCard() {
+  type Mode = "daily" | "weekly" | "hourly" | "custom"
+  const [mode, setMode] = useState<Mode>("daily")
+  const [hour, setHour] = useState(9)
+  const [minute, setMinute] = useState(0)
+  const [weekday, setWeekday] = useState(1) // 1 = Mon
+  const [customCron, setCustomCron] = useState("0 9 * * *")
+  const [copied, setCopied] = useState(false)
+
+  const cron = (() => {
+    const hh = String(hour).padStart(2, "0")
+    const mm = String(minute).padStart(2, "0")
+    void hh; void mm
+    if (mode === "daily") return `${minute} ${hour} * * *`
+    if (mode === "weekly") return `${minute} ${hour} * * ${weekday}`
+    if (mode === "hourly") return `${minute} * * * *`
+    return customCron
+  })()
+
+  const description = (() => {
+    const hh = String(hour).padStart(2, "0")
+    const mm = String(minute).padStart(2, "0")
+    const wdNames = ["일요일", "월요일", "화요일", "수요일", "목요일", "금요일", "토요일"]
+    if (mode === "daily") return `매일 ${hh}:${mm}`
+    if (mode === "weekly") return `매주 ${wdNames[weekday]} ${hh}:${mm}`
+    if (mode === "hourly") return `매시 ${mm}분`
+    return "커스텀 cron"
+  })()
+
+  const command = `/schedule "${cron}" "자동화 페이지의 '자동 실행' 버튼 눌러서 콘텐츠 1편을 만들어줘"`
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(command)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2500)
+    } catch {
+      /* clipboard 실패 시 selection */
+    }
+  }
+
+  const radio = (m: Mode, label: string) => (
+    <button
+      key={m}
+      type="button"
+      onClick={() => setMode(m)}
+      style={{
+        padding: "6px 12px",
+        fontSize: 11.5,
+        fontWeight: 600,
+        border: `1.5px solid ${mode === m ? "var(--brand-500)" : "var(--border-default)"}`,
+        background: mode === m ? "var(--brand-50, #eef2ff)" : "white",
+        color: mode === m ? "var(--brand-800, #3730a3)" : "var(--text-secondary)",
+        borderRadius: 6,
+        cursor: "pointer",
+      }}
+    >
+      {label}
+    </button>
+  )
+
+  return (
+    <div className="bcard">
+      <div className="bcard__header">
+        <div>
+          <div className="bcard__title">📅 스케줄 등록</div>
+          <div className="bcard__sub">Claude /schedule 명령 자동 생성 — Anthropic 클라우드, PC 꺼져 있어도 동작</div>
+        </div>
+      </div>
+      <div style={{ padding: "14px 18px", display: "flex", flexDirection: "column", gap: 12 }}>
+        {/* 주기 선택 */}
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 6 }}>
+            주기
+          </div>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            {radio("daily", "매일")}
+            {radio("weekly", "매주")}
+            {radio("hourly", "매시간")}
+            {radio("custom", "커스텀")}
+          </div>
+        </div>
+
+        {/* 요일 (weekly) */}
+        {mode === "weekly" && (
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 6 }}>
+              요일
+            </div>
+            <div style={{ display: "flex", gap: 4 }}>
+              {["일", "월", "화", "수", "목", "금", "토"].map((d, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => setWeekday(i)}
+                  style={{
+                    width: 32, height: 32,
+                    fontSize: 12, fontWeight: 700,
+                    border: `1.5px solid ${weekday === i ? "var(--brand-500)" : "var(--border-default)"}`,
+                    background: weekday === i ? "var(--brand-500)" : "white",
+                    color: weekday === i ? "white" : "var(--text-secondary)",
+                    borderRadius: 6, cursor: "pointer",
+                  }}
+                >
+                  {d}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* 시간 (daily / weekly) */}
+        {(mode === "daily" || mode === "weekly") && (
+          <div style={{ display: "flex", gap: 12 }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 6 }}>시</div>
+              <select value={hour} onChange={(e) => setHour(parseInt(e.target.value))}
+                style={{ width: "100%", padding: "6px 8px", fontSize: 12, border: "1px solid var(--border-default)", borderRadius: 6 }}>
+                {Array.from({ length: 24 }, (_, i) => (
+                  <option key={i} value={i}>{String(i).padStart(2, "0")}</option>
+                ))}
+              </select>
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 6 }}>분</div>
+              <select value={minute} onChange={(e) => setMinute(parseInt(e.target.value))}
+                style={{ width: "100%", padding: "6px 8px", fontSize: 12, border: "1px solid var(--border-default)", borderRadius: 6 }}>
+                {[0, 10, 15, 20, 30, 45].map((m) => (
+                  <option key={m} value={m}>{String(m).padStart(2, "0")}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+        )}
+
+        {/* 분 (hourly) */}
+        {mode === "hourly" && (
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 6 }}>매시 ?분</div>
+            <select value={minute} onChange={(e) => setMinute(parseInt(e.target.value))}
+              style={{ width: 100, padding: "6px 8px", fontSize: 12, border: "1px solid var(--border-default)", borderRadius: 6 }}>
+              {[0, 15, 30, 45].map((m) => (
+                <option key={m} value={m}>{String(m).padStart(2, "0")}</option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {/* 커스텀 cron */}
+        {mode === "custom" && (
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 6 }}>cron expression</div>
+            <input value={customCron} onChange={(e) => setCustomCron(e.target.value)}
+              placeholder="0 9 * * *"
+              style={{ width: "100%", padding: "6px 8px", fontSize: 12, fontFamily: "ui-monospace, monospace", border: "1px solid var(--border-default)", borderRadius: 6 }} />
+          </div>
+        )}
+
+        {/* 결과 미리보기 */}
+        <div style={{ marginTop: 4 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 6 }}>
+            🤖 생성된 Claude 명령어 ({description})
+          </div>
+          <div
+            style={{
+              padding: "10px 12px",
+              background: "var(--bg-subtle)",
+              border: "1px solid var(--border-default)",
+              borderRadius: 6,
+              fontFamily: "ui-monospace, monospace",
+              fontSize: 11,
+              wordBreak: "break-all",
+              lineHeight: 1.5,
+            }}
+          >
+            {command}
+          </div>
+          <button
+            type="button"
+            onClick={copy}
+            style={{
+              marginTop: 8,
+              width: "100%",
+              padding: "10px 14px",
+              background: copied ? "#10b981" : "var(--brand-600)",
+              color: "white",
+              border: 0,
+              borderRadius: 8,
+              fontSize: 12.5,
+              fontWeight: 700,
+              cursor: "pointer",
+            }}
+          >
+            {copied ? "✅ 복사됨 — Claude 에 붙여넣기" : "📋 명령어 복사"}
+          </button>
+          <div style={{ marginTop: 8, fontSize: 11, color: "var(--text-muted)", lineHeight: 1.5 }}>
+            복사 후 Claude Code 에서 <code>Ctrl+V</code> 로 붙여넣기 → 엔터. 등록 후 Anthropic 클라우드에서 실행됩니다.
+          </div>
+        </div>
+      </div>
     </div>
   )
 }
