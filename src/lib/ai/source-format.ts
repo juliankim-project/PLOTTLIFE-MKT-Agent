@@ -202,10 +202,13 @@ function resolvePublisher(host: string): string {
   return host
 }
 
-/** title 정리 — 너무 길면 자름, 일반적인 사이트명·메타 텍스트는 제거 */
+/** title 정리 — 너무 길면 자름, 일반적인 사이트명·메타 텍스트·URL 형태는 제거 */
 function cleanTitle(title: string | undefined, publisher: string): string {
   if (!title) return ""
   let t = title.trim()
+  /* URL 또는 도메인 형태면 비우기 (사용자 클릭 유도 X — 텍스트만) */
+  if (/^https?:\/\//i.test(t)) return ""
+  if (/^[\w.-]+\.(com|kr|co\.kr|or\.kr|go\.kr|ac\.kr|net|org|edu|gov|int)(\/[^\s]*)?$/i.test(t)) return ""
   /* 끝의 " - 매체명" 또는 " | 매체명" 제거 */
   t = t.replace(/\s*[-|·]\s*[^-|·]+\s*$/, (m) => {
     const tail = m.replace(/^\s*[-|·]\s*/, "").trim()
