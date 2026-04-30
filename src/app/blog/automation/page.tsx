@@ -53,6 +53,8 @@ const STAGE_LABEL: Record<Stage, { emoji: string; label: string }> = {
   done:      { emoji: "🎉", label: "완료" },
 }
 
+type StartWhen = "now" | "after-5min" | "after-15min" | "after-30min" | "after-1hour" | "specific"
+
 export default function AutomationPage() {
   const [running, setRunning] = useState(false)
   const [currentStage, setCurrentStage] = useState<Stage | null>(null)
@@ -60,6 +62,11 @@ export default function AutomationPage() {
   const [error, setError] = useState<string | null>(null)
   const [history, setHistory] = useState<AutomationRun[]>([])
   const [historyLoading, setHistoryLoading] = useState(true)
+  /* 시작 시점 */
+  const [startWhen, setStartWhen] = useState<StartWhen>("now")
+  const [specificTime, setSpecificTime] = useState("") // HH:MM 24h
+  const [scheduledAt, setScheduledAt] = useState<number | null>(null) // 예약 시각 (epoch ms)
+  const [countdown, setCountdown] = useState<string>("")
 
   /* 옵션 */
   const [forcedTemplate, setForcedTemplate] = useState<ForcedTemplate>("auto")
@@ -103,11 +110,41 @@ export default function AutomationPage() {
     loadHistory()
   }, [loadHistory])
 
-  const runAutomation = async () => {
+  /** 시작 시점 → 지연(ms) 계산 */
+  const computeDelay = (): number => {
+    if (startWhen === "now") return 0
+    if (startWhen === "after-5min") return 5 * 60 * 1000
+    if (startWhen === "after-15min") return 15 * 60 * 1000
+    if (startWhen === "after-30min") return 30 * 60 * 1000
+    if (startWhen === "after-1hour") return 60 * 60 * 1000
+    if (startWhen === "specific") {
+      const m = specificTime.match(/^(\d{1,2}):(\d{2})$/)
+      if (!m) return 0
+      const target = new Date()
+      target.setHours(parseInt(m[1]), parseInt(m[2]), 0, 0)
+      if (target.getTime() <= Date.now()) target.setDate(target.getDate() + 1)
+      return target.getTime() - Date.now()
+    }
+    return 0
+  }
+
+  /** 단계별 시뮬레이션 (UI 만 — 실제 진행은 서버) */
+  const simulateStages = (totalMs: number) => {
+    const stages: Stage[] = ["selecting", "brief", "writing", "reviewing", "approving"]
+    const perStage = totalMs / stages.length
+    stages.forEach((s, i) => {
+      setTimeout(() => setCurrentStage(s), i * perStage)
+    })
+  }
+
+  /** 실제 호출 */
+  const performRun = async () => {
     setRunning(true)
     setError(null)
     setLastResult(null)
     setCurrentStage("selecting")
+    /* UI 단계 페이크 진행 (60s 가정 — 실제 길이는 서버) */
+    simulateStages(60_000)
     try {
       const j = await safeFetchJson<{ ok: boolean; result: FullRunResult; error?: string }>(
         "/api/automation/full-run",
@@ -121,18 +158,53 @@ export default function AutomationPage() {
         }
       )
       setLastResult(j.result)
-      if (!j.ok) {
-        setError(j.error ?? "자동화 실패")
-      } else {
-        await loadHistory()
-      }
+      if (!j.ok) setError(j.error ?? "자동화 실패")
+      else await loadHistory()
     } catch (e) {
       setError(e instanceof Error ? e.message : "자동화 실패")
     } finally {
       setRunning(false)
       setCurrentStage(null)
+      setScheduledAt(null)
     }
   }
+
+  const runAutomation = async () => {
+    const delay = computeDelay()
+    if (delay <= 0) {
+      await performRun()
+      return
+    }
+    /* 예약 — setTimeout 으로 (PC 열려 있다는 전제) */
+    const at = Date.now() + delay
+    setScheduledAt(at)
+    setError(null)
+    /* delay 후 실제 호출 */
+    setTimeout(() => {
+      performRun()
+    }, delay)
+  }
+
+  /** 카운트다운 표시 */
+  useEffect(() => {
+    if (!scheduledAt) {
+      setCountdown("")
+      return
+    }
+    const tick = () => {
+      const remain = scheduledAt - Date.now()
+      if (remain <= 0) {
+        setCountdown("")
+        return
+      }
+      const min = Math.floor(remain / 60000)
+      const sec = Math.floor((remain % 60000) / 1000)
+      setCountdown(`${min}:${String(sec).padStart(2, "0")}`)
+    }
+    tick()
+    const id = setInterval(tick, 1000)
+    return () => clearInterval(id)
+  }, [scheduledAt])
 
   return (
     <div className="bpage fade-up">
@@ -230,22 +302,76 @@ export default function AutomationPage() {
               </div>
             </div>
 
+            {/* 시작 시점 (PC 열려있다는 전제) */}
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 8 }}>
+                언제 시작
+              </div>
+              <select
+                value={startWhen}
+                onChange={(e) => setStartWhen(e.target.value as StartWhen)}
+                disabled={running || scheduledAt != null}
+                style={{
+                  width: "100%",
+                  padding: "8px 10px",
+                  fontSize: 12.5,
+                  border: "1px solid var(--border-default)",
+                  borderRadius: 6,
+                  background: "white",
+                  cursor: "pointer",
+                }}
+              >
+                <option value="now">즉시</option>
+                <option value="after-5min">5분 뒤</option>
+                <option value="after-15min">15분 뒤</option>
+                <option value="after-30min">30분 뒤</option>
+                <option value="after-1hour">1시간 뒤</option>
+                <option value="specific">특정 시각…</option>
+              </select>
+              {startWhen === "specific" && (
+                <input
+                  type="time"
+                  value={specificTime}
+                  onChange={(e) => setSpecificTime(e.target.value)}
+                  disabled={running || scheduledAt != null}
+                  style={{
+                    marginTop: 6,
+                    width: "100%",
+                    padding: "8px 10px",
+                    fontSize: 12.5,
+                    border: "1px solid var(--border-default)",
+                    borderRadius: 6,
+                  }}
+                />
+              )}
+              <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 6, lineHeight: 1.5 }}>
+                ⚠️ PC 가 켜져 있어야 동작. 닫혀도 동작하려면 우측 \&quot;스케줄 등록\&quot; 사용
+              </div>
+            </div>
+
+            {/* 단계 네비게이터 */}
+            {(running || scheduledAt) && (
+              <div style={{ marginBottom: 14, padding: "10px 12px", background: "var(--bg-subtle)", border: "1px solid var(--border-default)", borderRadius: 8 }}>
+                <StageNavigator currentStage={currentStage} scheduled={scheduledAt} countdown={countdown} />
+              </div>
+            )}
+
             {/* 실행 버튼 */}
             <button
               type="button"
               onClick={runAutomation}
-              disabled={running}
+              disabled={running || scheduledAt != null}
               style={{
                 width: "100%",
                 padding: "14px",
-                background: running ? "#cbd5e1" : "linear-gradient(135deg, var(--brand-600) 0%, var(--brand-700) 100%)",
+                background: (running || scheduledAt != null) ? "#cbd5e1" : "linear-gradient(135deg, var(--brand-600) 0%, var(--brand-700) 100%)",
                 color: "white",
                 border: 0,
                 borderRadius: 10,
                 fontSize: 14,
                 fontWeight: 700,
-                cursor: running ? "not-allowed" : "pointer",
-                boxShadow: running ? "none" : "0 4px 14px rgba(99,102,241,0.30)",
+                cursor: (running || scheduledAt != null) ? "not-allowed" : "pointer",
+                boxShadow: (running || scheduledAt != null) ? "none" : "0 4px 14px rgba(99,102,241,0.30)",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
@@ -256,6 +382,8 @@ export default function AutomationPage() {
                 <>
                   <Spinner /> {currentStage ? STAGE_LABEL[currentStage].label : "실행 중"}…
                 </>
+              ) : scheduledAt ? (
+                <>⏳ 예약 대기 중 · {countdown}</>
               ) : (
                 <>🚀 자동 실행</>
               )}
@@ -400,6 +528,81 @@ export default function AutomationPage() {
       <style jsx global>{`
         @keyframes spin { to { transform: rotate(360deg); } }
       `}</style>
+    </div>
+  )
+}
+
+/* ─── 단계 네비게이터 (Stepper) ────────────────────────────── */
+function StageNavigator({
+  currentStage,
+  scheduled,
+  countdown,
+}: {
+  currentStage: Stage | null
+  scheduled: number | null
+  countdown: string
+}) {
+  const stages: Stage[] = ["selecting", "brief", "writing", "reviewing", "approving", "done"]
+  const currentIdx = currentStage ? stages.indexOf(currentStage) : -1
+
+  if (scheduled && currentIdx < 0) {
+    return (
+      <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 12.5, color: "var(--text-secondary)" }}>
+        <span style={{ fontSize: 16 }}>⏳</span>
+        <span>예약 대기 중 — <b>{countdown}</b> 후 실행</span>
+      </div>
+    )
+  }
+
+  return (
+    <div>
+      <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", marginBottom: 8 }}>
+        진행 단계
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 0 }}>
+        {stages.map((s, i) => {
+          const meta = STAGE_LABEL[s]
+          const isPast = i < currentIdx
+          const isNow = i === currentIdx
+          const isFuture = i > currentIdx
+          return (
+            <div key={s} style={{ display: "flex", alignItems: "center", flex: i === stages.length - 1 ? 0 : 1 }}>
+              <div
+                title={meta.label}
+                style={{
+                  width: 28,
+                  height: 28,
+                  borderRadius: "50%",
+                  display: "grid",
+                  placeItems: "center",
+                  fontSize: 13,
+                  fontWeight: 700,
+                  background: isNow ? "var(--brand-600)" : isPast ? "#10b981" : "var(--bg-muted)",
+                  color: isNow || isPast ? "white" : "var(--text-muted)",
+                  border: isNow ? "3px solid var(--brand-200)" : "0",
+                  flexShrink: 0,
+                  transition: "all 0.2s",
+                }}
+              >
+                {isPast ? "✓" : meta.emoji}
+              </div>
+              {i < stages.length - 1 && (
+                <div
+                  style={{
+                    flex: 1,
+                    height: 2,
+                    background: isPast ? "#10b981" : "var(--border-default)",
+                    margin: "0 4px",
+                  }}
+                />
+              )}
+            </div>
+          )
+        })}
+      </div>
+      <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 6, textAlign: "center" }}>
+        {currentStage ? `${STAGE_LABEL[currentStage].emoji} ${STAGE_LABEL[currentStage].label}` : "대기 중"}
+      </div>
     </div>
   )
 }
