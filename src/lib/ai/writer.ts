@@ -29,6 +29,12 @@ function stripTrailingSourcesSection(md: string): string {
   s = s.replace(/<br\s*\/?>/gi, "")
   s = s.replace(/<\/?(p|div|span)[^>]*>/gi, "")
 
+  /* 0-1) 마크다운 링크 [label](http(s)://...) → label 만 남김 — 어디 환경에서도 클릭 X.
+     ※ (?<!!) 로 이미지 마크다운 ![alt](url) 은 보존 */
+  s = s.replace(/(?<!!)\[([^\]]+)\]\(https?:\/\/[^)]+\)/g, "$1")
+  /* 0-2) 본문에 raw URL 만 있는 줄/구간 제거 (https://... 단독, 이미지 src 는 보존됨) */
+  s = s.replace(/(?<![">'\w(])https?:\/\/(?![^\s)]+\))\S+/g, "")
+
   /* 1) 명시적 헤딩 (## / ### / **) — 그 다음 모든 라인 절단 */
   s = s.replace(
     /\n+(?:[#]{1,6}\s*|\*\*\s*)(?:📚\s*)?(?:참고\s*(?:출처|자료|문헌)|References?)\s*[:.]*\s*\*{0,2}\s*\n[\s\S]*$/i,
