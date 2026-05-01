@@ -13,6 +13,7 @@ import { supabaseAdmin } from "@/lib/supabase/server"
 import { generateAndStoreBrief } from "./brief"
 import { writeAndStoreDraft } from "./writer"
 import { analyzeAndStoreReview } from "./review"
+import { generateImagesForDraft } from "./image-pipeline"
 
 export interface FullRunInput {
   projectId: string
@@ -31,8 +32,9 @@ export interface FullRunResult {
   topicId?: string
   draftId?: string
   reviewId?: string
+  heroUrl?: string | null
   /** 마지막 도달 단계 */
-  stage: "selecting" | "brief" | "writing" | "reviewing" | "approving" | "done"
+  stage: "selecting" | "brief" | "writing" | "imaging" | "reviewing" | "approving" | "done"
   durationMs: number
   /** 실패 시 메시지 */
   error?: string
@@ -40,8 +42,11 @@ export interface FullRunResult {
   steps: {
     brief?: number
     write?: number
+    image?: number
     review?: number
   }
+  /** 이미지 부분 실패 등 — fail 안 시키고 진행한 경고 */
+  warnings?: string[]
 }
 
 /**
@@ -110,6 +115,35 @@ export async function runFullPipelineFromIdea(input: FullRunInput): Promise<Full
         metadata: { ...baseMeta, automation_run_id: runId },
       })
       .eq("id", writeResult.draft.id)
+
+    /* ─── STEP 2.5: 이미지 생성 (hero + IMAGE_SLOT 치환) ─── */
+    result.stage = "imaging"
+    const imageT0 = Date.now()
+    try {
+      const imgResult = await generateImagesForDraft(writeResult.draft.id)
+      result.steps.image = Date.now() - imageT0
+      if (imgResult.ok) {
+        result.heroUrl = imgResult.heroUrl ?? null
+        if (imgResult.failures && imgResult.failures.length > 0) {
+          result.warnings = [
+            ...(result.warnings ?? []),
+            `이미지 부분 실패: ${imgResult.failures.join(" / ")}`,
+          ]
+        }
+      } else {
+        /* 이미지 전체 실패 — 경고만 + 검수는 계속 (본문 자체는 OK) */
+        result.warnings = [
+          ...(result.warnings ?? []),
+          `이미지 생성 실패: ${imgResult.error ?? "원인 불명"} — 본문은 정상, 검수 진행`,
+        ]
+        console.warn(`[automation] image step failed: ${imgResult.error}`)
+      }
+    } catch (err) {
+      result.steps.image = Date.now() - imageT0
+      const msg = err instanceof Error ? err.message : String(err)
+      result.warnings = [...(result.warnings ?? []), `이미지 단계 예외: ${msg.slice(0, 200)}`]
+      console.warn(`[automation] image step exception: ${msg}`)
+    }
 
     /* ─── STEP 3: 검수 ─── */
     result.stage = "reviewing"

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react"
 import Link from "next/link"
 import { Icon, PageHeader } from "../_ui"
 
-type Stage = "selecting" | "brief" | "writing" | "reviewing" | "approving" | "done"
+type Stage = "selecting" | "brief" | "writing" | "imaging" | "reviewing" | "approving" | "done"
 type Quality = "flash" | "pro"
 type ForcedTemplate = "auto" | "steps" | "compare" | "story"
 
@@ -15,10 +15,12 @@ interface FullRunResult {
   topicId?: string
   draftId?: string
   reviewId?: string
+  heroUrl?: string | null
   stage: Stage
   durationMs: number
   error?: string
-  steps: { brief?: number; write?: number; review?: number }
+  steps: { brief?: number; write?: number; image?: number; review?: number }
+  warnings?: string[]
 }
 
 interface AutomationRun {
@@ -48,6 +50,7 @@ const STAGE_LABEL: Record<Stage, { emoji: string; label: string }> = {
   selecting: { emoji: "🔎", label: "주제 선택" },
   brief:     { emoji: "📋", label: "브리프 생성" },
   writing:   { emoji: "✍️", label: "본문 작성" },
+  imaging:   { emoji: "🖼", label: "이미지 생성" },
   reviewing: { emoji: "🔍", label: "검수" },
   approving: { emoji: "✅", label: "검수 완료" },
   done:      { emoji: "🎉", label: "완료" },
@@ -130,11 +133,22 @@ export default function AutomationPage() {
 
   /** 단계별 시뮬레이션 (UI 만 — 실제 진행은 서버) */
   const simulateStages = (totalMs: number) => {
-    const stages: Stage[] = ["selecting", "brief", "writing", "reviewing", "approving"]
-    const perStage = totalMs / stages.length
-    stages.forEach((s, i) => {
-      setTimeout(() => setCurrentStage(s), i * perStage)
-    })
+    /* 가중 진행 — 본문 작성·이미지가 가장 오래 걸림 */
+    const stages: Array<{ s: Stage; weight: number }> = [
+      { s: "selecting", weight: 0.5 },
+      { s: "brief", weight: 1.5 },
+      { s: "writing", weight: 4 },
+      { s: "imaging", weight: 3 },
+      { s: "reviewing", weight: 2 },
+      { s: "approving", weight: 0.5 },
+    ]
+    const totalWeight = stages.reduce((a, b) => a + b.weight, 0)
+    let acc = 0
+    for (const { s, weight } of stages) {
+      const offset = (acc / totalWeight) * totalMs
+      setTimeout(() => setCurrentStage(s), offset)
+      acc += weight
+    }
   }
 
   /** 실제 호출 */
@@ -412,7 +426,13 @@ export default function AutomationPage() {
                   <div style={{ color: "var(--text-secondary)" }}>
                     📋 브리프 {(lastResult.steps.brief / 1000).toFixed(1)}s
                     {lastResult.steps.write != null && <> · ✍️ 작성 {(lastResult.steps.write / 1000).toFixed(1)}s</>}
+                    {lastResult.steps.image != null && <> · 🖼 이미지 {(lastResult.steps.image / 1000).toFixed(1)}s</>}
                     {lastResult.steps.review != null && <> · 🔍 검수 {(lastResult.steps.review / 1000).toFixed(1)}s</>}
+                  </div>
+                )}
+                {lastResult.warnings && lastResult.warnings.length > 0 && (
+                  <div style={{ marginTop: 6, padding: "6px 8px", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 4, color: "#92400e", fontSize: 11 }}>
+                    {lastResult.warnings.map((w, i) => <div key={i}>⚠️ {w}</div>)}
                   </div>
                 )}
                 {lastResult.draftId && (
@@ -542,7 +562,7 @@ function StageNavigator({
   scheduled: number | null
   countdown: string
 }) {
-  const stages: Stage[] = ["selecting", "brief", "writing", "reviewing", "approving", "done"]
+  const stages: Stage[] = ["selecting", "brief", "writing", "imaging", "reviewing", "approving", "done"]
   const currentIdx = currentStage ? stages.indexOf(currentStage) : -1
 
   if (scheduled && currentIdx < 0) {
