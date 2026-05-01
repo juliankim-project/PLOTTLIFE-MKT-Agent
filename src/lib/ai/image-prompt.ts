@@ -70,7 +70,14 @@ interface GeneratedImagePrompt {
 }
 
 const STYLE_SUFFIX =
-  "Photorealistic editorial photography, warm natural window light, soft shallow depth of field, cinematic color grading, Korean urban residence aesthetic, 35mm lens, NO visible text of any kind, NO Korean characters or hangul, NO subway/metro station signs, NO street signs with text, NO building name plaques, NO storefront signage with readable text, NO logos, NO watermarks, NO brand names. Any signage if present must appear blurred, abstract, out-of-focus, or facing away from camera."
+  "Photorealistic editorial photography, warm natural window light, soft shallow depth of field, cinematic color grading, Korean urban residence aesthetic, 35mm lens. " +
+  "STRICT REQUIREMENT — the entire image MUST be completely TEXTLESS: " +
+  "absolutely NO Korean characters or hangul anywhere, NO English/Japanese/Chinese letters, " +
+  "NO subway or metro stations of any kind, NO transit infrastructure (no entrances, platforms, station signs, route maps), " +
+  "NO street signs with visible text, NO building name plaques, NO storefront signage with readable letters, " +
+  "NO digital displays showing text, NO billboards, NO posters with text, " +
+  "NO logos, NO watermarks, NO brand names, NO menu boards. " +
+  "If any signage appears in the background, it MUST be deeply blurred bokeh OR completely abstract shapes — never letterforms, never fake characters."
 
 /** 같은 에이전트(Creative Designer)로 여러 프롬프트를 한 번에 */
 export async function buildImagePrompts(input: BuildInput): Promise<GeneratedImagePrompt[]> {
@@ -97,18 +104,30 @@ Generate for EACH slot:
    - Warm natural light, editorial mood, 35mm lens, shallow DoF.
    - NO text overlays. NO logos. NO brand names visible.
 
-   ⚠️ Critical place-name rules:
-   - NEVER specify real subway stations, neighborhood names, or landmark names
-     (e.g., do NOT write "Hongdae station", "Gangnam", "Itaewon", "Myeongdong").
-     The image model cannot render correct Korean text and will produce
-     fake/garbled hangul on signs — this is a known failure mode.
-   - Use generic descriptors instead: "a quiet residential alley in Seoul",
-     "a bright cafe street in a trendy Korean neighborhood",
-     "a modern Korean officetel building exterior", etc.
-   - If a subway/transit scene is required, describe the platform, train, and
-     atmosphere WITHOUT showing station signs or location markers.
-   - Any incidental signage (storefront, street sign, station name plate)
-     should be explicitly described as blurred, out-of-focus, or facing away.
+   ⚠️ CRITICAL — transit/signage avoidance (zero tolerance):
+
+   The image model FAILS at rendering Korean text. Past outputs showed
+   GIBBERISH hangul on station signs ("의동학", "뷰겐") that look like
+   fake station names. Users complained this destroys credibility.
+
+   THEREFORE — these scenes are absolutely BANNED in the prompt:
+   - subway / metro stations of ANY kind (entrance, platform, exit, sign, map)
+   - bus stops with signage
+   - any street scene where a station name sign or transit map is visible
+   - any neighborhood landmark with its name displayed (storefronts, building names)
+   - any wayfinding signage, even in the background
+
+   REFRAME RULES — if the slot description suggests transit / specific places:
+   - "지하철역 근처 카페" → "a cozy cafe interior with warm lighting"
+   - "홍대 거리" → "a vibrant Korean neighborhood street with autumn trees"
+   - "학교 앞 풍경" → "a calm residential street with a young person walking"
+   - When in doubt, stay INDOORS (cafe, room, library) or focus on PEOPLE
+     (close-up portraits, conversation, daily moments) — these never need signage.
+
+   PLACE NAMES — NEVER use real names: "Hongdae", "Gangnam", "Itaewon",
+   "Myeongdong", "Sinchon", any university name, any subway line.
+   Use only generic descriptors: "a residential area in Seoul",
+   "a trendy district in central Seoul", "a Korean officetel neighborhood".
 
    - Must end with this style suffix verbatim: "${STYLE_SUFFIX}"
 2. "altKo" — a natural Korean alt text (15~30 Korean chars) describing the image.
@@ -148,7 +167,41 @@ Slot index 0 = hero (cover). Other indices map to the inline slots above.`
     .map((i) => ({
       kind: i.kind === "hero" ? "hero" : "inline",
       index: typeof i.index === "number" ? i.index : 0,
-      prompt: String(i.prompt),
+      prompt: sanitizeImagePrompt(String(i.prompt)),
       altKo: String(i.altKo).slice(0, 60),
     }))
+}
+
+/**
+ * 영문 prompt 후처리 — Creative Designer 가 가이드 어기면 강제 치환.
+ * transit/signage 류 단어를 안전한 generic 으로 바꿈.
+ */
+function sanitizeImagePrompt(prompt: string): string {
+  let p = prompt
+
+  /* 지하철·역 → 안전한 도시 장면 */
+  p = p.replace(/\b(?:subway|metro|underground)\s+(?:station|entrance|exit|platform|stop)\b/gi, "city street corner")
+  p = p.replace(/\b(?:subway|metro)\s+sign(?:age|s)?\b/gi, "abstract storefront")
+  p = p.replace(/\bstation\s+(?:sign|name|platform|entrance|exit)\b/gi, "urban scene")
+  p = p.replace(/\b(?:subway|metro|underground)\b/gi, "city")
+  p = p.replace(/\btrain\s+(?:platform|station)\b/gi, "indoor cafe scene")
+  p = p.replace(/\bbus\s+stop\b/gi, "intersection")
+
+  /* 한국어 텍스트·간판 시각화 단어 → 차단 */
+  p = p.replace(/\b(?:korean|hangul|hanja)\s+(?:text|characters?|letters?|signs?)\b/gi, "")
+  p = p.replace(/\bsignage\s+with\s+(?:visible\s+)?(?:text|letters?|characters?)\b/gi, "abstract building details")
+  p = p.replace(/\bplatform\s+(?:sign|board|map|display)\b/gi, "")
+  p = p.replace(/\bstreet\s+sign\b/gi, "")
+  p = p.replace(/\b(?:storefront|shop)\s+(?:sign|signage|board|display)\b/gi, "storefront facade")
+  p = p.replace(/\bbillboard\b/gi, "")
+  p = p.replace(/\bposter\b/gi, "")
+
+  /* 실제 한국 지명·역명 (혹시 들어가면) → generic */
+  p = p.replace(/\b(?:Hongdae|Gangnam|Itaewon|Myeongdong|Sinchon|Apgujeong|Yongsan|Seongsu|Jongno|Mapo|Jamsil|Dongdaemun|Insadong|Garosu|Bukchon)\b/gi, "Seoul neighborhood")
+  p = p.replace(/\b(?:Yonsei|Korea|Hongik|Ewha|Sogang|Kyunghee|Hanyang)\s+University\b/gi, "Seoul university campus")
+
+  /* 연속 공백·콤마 정리 */
+  p = p.replace(/,\s*,+/g, ",")
+  p = p.replace(/\s{2,}/g, " ").trim()
+  return p
 }

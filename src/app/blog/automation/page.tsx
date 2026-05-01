@@ -553,6 +553,33 @@ export default function AutomationPage() {
 }
 
 /* ─── 단계 네비게이터 (Stepper) ────────────────────────────── */
+/** 단계별 가중치 — simulateStages 와 동일. 진행률 % 계산용 */
+const STAGE_WEIGHTS: Array<{ s: Stage; weight: number }> = [
+  { s: "selecting", weight: 0.5 },
+  { s: "brief", weight: 1.5 },
+  { s: "writing", weight: 4 },
+  { s: "imaging", weight: 3 },
+  { s: "reviewing", weight: 2 },
+  { s: "approving", weight: 0.5 },
+  { s: "done", weight: 0 },
+]
+const TOTAL_STAGE_WEIGHT = STAGE_WEIGHTS.reduce((a, b) => a + b.weight, 0)
+
+/** 현재 단계까지 + 가중치 누적 → 진행률 % */
+function computeProgress(currentStage: Stage | null): number {
+  if (!currentStage) return 0
+  if (currentStage === "done") return 100
+  let acc = 0
+  for (const { s, weight } of STAGE_WEIGHTS) {
+    if (s === currentStage) {
+      /* 현재 단계는 절반쯤 진행됐다고 표시 */
+      return Math.round(((acc + weight * 0.5) / TOTAL_STAGE_WEIGHT) * 100)
+    }
+    acc += weight
+  }
+  return 0
+}
+
 function StageNavigator({
   currentStage,
   scheduled,
@@ -564,6 +591,7 @@ function StageNavigator({
 }) {
   const stages: Stage[] = ["selecting", "brief", "writing", "imaging", "reviewing", "approving", "done"]
   const currentIdx = currentStage ? stages.indexOf(currentStage) : -1
+  const progressPct = computeProgress(currentStage)
 
   if (scheduled && currentIdx < 0) {
     return (
@@ -576,15 +604,46 @@ function StageNavigator({
 
   return (
     <div>
-      <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", marginBottom: 8 }}>
-        진행 단계
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)" }}>
+          진행 단계
+        </div>
+        <div className="text-mono" style={{ fontSize: 12, fontWeight: 700, color: "var(--brand-700)" }}>
+          {progressPct}%
+        </div>
       </div>
+
+      {/* 진행률 바 */}
+      <div
+        style={{
+          height: 6,
+          background: "var(--bg-muted)",
+          borderRadius: 999,
+          overflow: "hidden",
+          marginBottom: 12,
+          position: "relative",
+        }}
+      >
+        <div
+          style={{
+            height: "100%",
+            width: `${progressPct}%`,
+            background: progressPct >= 100
+              ? "linear-gradient(90deg, #10b981 0%, #34d399 100%)"
+              : "linear-gradient(90deg, var(--brand-500) 0%, var(--brand-700) 100%)",
+            borderRadius: 999,
+            transition: "width 0.3s ease",
+            boxShadow: "0 0 8px rgba(99,102,241,0.35)",
+          }}
+        />
+      </div>
+
+      {/* 단계별 동그라미 */}
       <div style={{ display: "flex", alignItems: "center", gap: 0 }}>
         {stages.map((s, i) => {
           const meta = STAGE_LABEL[s]
           const isPast = i < currentIdx
           const isNow = i === currentIdx
-          const isFuture = i > currentIdx
           return (
             <div key={s} style={{ display: "flex", alignItems: "center", flex: i === stages.length - 1 ? 0 : 1 }}>
               <div
@@ -602,6 +661,7 @@ function StageNavigator({
                   border: isNow ? "3px solid var(--brand-200)" : "0",
                   flexShrink: 0,
                   transition: "all 0.2s",
+                  animation: isNow ? "stage-pulse 1.4s ease-in-out infinite" : "none",
                 }}
               >
                 {isPast ? "✓" : meta.emoji}
@@ -613,6 +673,7 @@ function StageNavigator({
                     height: 2,
                     background: isPast ? "#10b981" : "var(--border-default)",
                     margin: "0 4px",
+                    transition: "background 0.3s",
                   }}
                 />
               )}
@@ -620,9 +681,20 @@ function StageNavigator({
           )
         })}
       </div>
-      <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 6, textAlign: "center" }}>
-        {currentStage ? `${STAGE_LABEL[currentStage].emoji} ${STAGE_LABEL[currentStage].label}` : "대기 중"}
+
+      {/* 현재 단계 라벨 */}
+      <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 8, textAlign: "center", fontWeight: 600 }}>
+        {currentStage
+          ? <>{STAGE_LABEL[currentStage].emoji} <b>{STAGE_LABEL[currentStage].label}</b> 중…</>
+          : "대기 중"}
       </div>
+
+      <style jsx global>{`
+        @keyframes stage-pulse {
+          0%, 100% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.5); }
+          50% { box-shadow: 0 0 0 6px rgba(99, 102, 241, 0); }
+        }
+      `}</style>
     </div>
   )
 }
