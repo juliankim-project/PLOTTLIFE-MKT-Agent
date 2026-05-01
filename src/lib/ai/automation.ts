@@ -152,25 +152,71 @@ function finish(r: FullRunResult, t0: number): FullRunResult {
    ════════════════════════════════════════════════════════════════ */
 
 /**
- * shortlisted idea 중 1개 선택.
- * - 최근 10편 콘텐츠의 cluster/intent 분포 분석
- * - 가장 적게 사용된 cluster/intent 조합의 idea 우선
- * - 동률이면 fit_score 최고
+ * idea 후보 풀 보장 — shortlisted 가 부족하면 자동 ideation 호출.
+ * 호출 시점: shortlisted 가 N개 미만일 때.
+ */
+async function ensureCandidatePool(projectId: string, minCount = 3): Promise<void> {
+  const db = supabaseAdmin()
+  const { count, error } = await db
+    .from("ideas")
+    .select("id", { count: "exact", head: true })
+    .eq("project_id", projectId)
+    .eq("status", "shortlisted")
+  if (error) {
+    console.warn("[automation] candidate count failed:", error.message)
+    return
+  }
+  if ((count ?? 0) >= minCount) return
+
+  /* 부족 — 자동 ideation 호출 */
+  console.log(`[automation] only ${count ?? 0} shortlisted — auto-running ideation (10 ideas)`)
+  try {
+    const { generateAndStoreIdeas } = await import("./ideation")
+    await generateAndStoreIdeas({
+      projectId,
+      count: 10,
+      temperature: 0.85, // 다양성 살짝 ↑
+      quality: "flash",
+    })
+    /* 새로 만든 ideas 는 status='draft'. pickDiverseIdea 가 후보로 받게 */
+  } catch (err) {
+    console.warn("[automation] auto-ideation failed:", err instanceof Error ? err.message : err)
+  }
+}
+
+/**
+ * idea 1개 선택 — 다양성 weight (cluster + intent + persona).
+ * - 1차: shortlisted 후보. 부족하면 ensureCandidatePool 로 자동 ideation 후 draft 도 포함
+ * - 최근 10편 콘텐츠의 cluster/intent/persona 분포 분석
+ * - 페널티 합 가장 적은 idea 우선, 동률이면 fit_score 최고
  */
 async function pickDiverseIdea(projectId: string): Promise<string | null> {
   const db = supabaseAdmin()
 
-  /* shortlisted 후보 */
-  const { data: candidates } = await db
+  /* 후보 풀 보장 — 부족하면 자동 ideation */
+  await ensureCandidatePool(projectId, 3)
+
+  /* 1차: shortlisted, 없으면 draft 도 포함 */
+  let { data: candidates } = await db
     .from("ideas")
-    .select("id, fit_score, cluster, signal")
+    .select("id, fit_score, cluster, signal, persona_id")
     .eq("project_id", projectId)
     .eq("status", "shortlisted")
     .order("fit_score", { ascending: false })
     .limit(50)
+  if (!candidates || candidates.length === 0) {
+    const fallback = await db
+      .from("ideas")
+      .select("id, fit_score, cluster, signal, persona_id")
+      .eq("project_id", projectId)
+      .eq("status", "draft")
+      .order("fit_score", { ascending: false })
+      .limit(50)
+    candidates = fallback.data
+  }
   if (!candidates || candidates.length === 0) return null
 
-  /* 최근 10편 콘텐츠의 cluster/intent 분포 (drafts.topic 통해 조회) */
+  /* 최근 10편 콘텐츠의 cluster/intent/persona 분포 */
   const { data: recent } = await db
     .from("drafts")
     .select("topic_id")
@@ -180,20 +226,20 @@ async function pickDiverseIdea(projectId: string): Promise<string | null> {
     .limit(10)
 
   const topicIds = (recent ?? []).map((r) => r.topic_id).filter((x): x is string => !!x)
-  let recentClusters = new Map<string, number>()
-  let recentIntents = new Map<string, number>()
+  const recentClusters = new Map<string, number>()
+  const recentIntents = new Map<string, number>()
+  const recentPersonas = new Map<string, number>()
   if (topicIds.length > 0) {
     const { data: topics } = await db
       .from("topics")
-      .select("journey_stage, idea_id")
+      .select("journey_stage, idea_id, persona_id")
       .in("id", topicIds)
-    /* idea_id → ideas 의 signal.intent 추적 */
     const topicIdeaIds = (topics ?? []).map((t) => t.idea_id).filter((x): x is string => !!x)
-    let ideaSignalMap = new Map<string, { cluster?: string; intent?: string }>()
+    let ideaSignalMap = new Map<string, { cluster?: string; intent?: string; persona_id?: string }>()
     if (topicIdeaIds.length > 0) {
       const { data: ideaInfos } = await db
         .from("ideas")
-        .select("id, cluster, signal")
+        .select("id, cluster, signal, persona_id")
         .in("id", topicIdeaIds)
       ideaSignalMap = new Map(
         (ideaInfos ?? []).map((i) => [
@@ -201,6 +247,7 @@ async function pickDiverseIdea(projectId: string): Promise<string | null> {
           {
             cluster: i.cluster as string | undefined,
             intent: ((i.signal as { intent?: string } | null) ?? {}).intent,
+            persona_id: i.persona_id as string | undefined,
           },
         ])
       )
@@ -209,19 +256,22 @@ async function pickDiverseIdea(projectId: string): Promise<string | null> {
       const info = t.idea_id ? ideaSignalMap.get(t.idea_id as string) : undefined
       const cluster = info?.cluster ?? (t.journey_stage as string | undefined)
       const intent = info?.intent
+      const personaId = info?.persona_id ?? (t.persona_id as string | undefined)
       if (cluster) recentClusters.set(cluster, (recentClusters.get(cluster) ?? 0) + 1)
       if (intent) recentIntents.set(intent, (recentIntents.get(intent) ?? 0) + 1)
+      if (personaId) recentPersonas.set(personaId, (recentPersonas.get(personaId) ?? 0) + 1)
     }
   }
 
-  /* 후보별 다양성 점수 = -(최근 cluster 사용 + 최근 intent 사용) → 적게 쓰일수록 ↑ */
+  /* 다양성 점수 — cluster + intent + persona 모두 페널티 */
   const scored = candidates.map((c) => {
     const cluster = c.cluster as string | undefined
     const intent = ((c.signal as { intent?: string } | null) ?? {}).intent
+    const personaId = c.persona_id as string | undefined
     const clusterPenalty = cluster ? recentClusters.get(cluster) ?? 0 : 0
     const intentPenalty = intent ? recentIntents.get(intent) ?? 0 : 0
-    /* 다양성 보너스: 사용 빈도 적을수록 + (각 0~10편 → 페널티 0~10) */
-    const diversityBonus = -(clusterPenalty + intentPenalty) * 5
+    const personaPenalty = personaId ? recentPersonas.get(personaId) ?? 0 : 0
+    const diversityBonus = -(clusterPenalty + intentPenalty + personaPenalty) * 5
     return {
       id: c.id as string,
       score: (c.fit_score ?? 0) + diversityBonus,
