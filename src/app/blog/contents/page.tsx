@@ -755,7 +755,7 @@ export default function ContentsPage() {
                         gap: 6,
                       }}
                     >
-                      <span>플라트라이프 에디터</span>
+                      <span>Life Editor</span>
                       {d.primary_keyword && (
                         <>
                           <span style={{ color: "var(--border-default)" }}>·</span>
