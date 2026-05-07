@@ -36,7 +36,7 @@ export const CATEGORY_META: Record<KeywordCategory, { label: string; icon: strin
  * 기준:
  *  - 블로그 주제화 가능성 (단순 매물 스펙 제외)
  *  - 검색 의도 명확
- *  - 플라트 차별점과 연결
+ *  - 플라트 라이프 차별점과 연결
  */
 export const SEED_KEYWORDS: SeedKeyword[] = [
   // 📍 지역 (서울 동네) — 14

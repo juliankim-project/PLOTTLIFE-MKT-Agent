@@ -187,7 +187,7 @@ export const mockTasks: AgentTask[] = [
     status: "in_progress",
     assignee: "content-marketer",
     createdAt: "2026-04-14",
-    description: "플라트라이프 신규 서비스 소개 블로그 글",
+    description: "플라트 라이프 신규 서비스 소개 블로그 글",
   },
   {
     id: "task-3",

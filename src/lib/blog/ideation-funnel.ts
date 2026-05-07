@@ -788,7 +788,7 @@ export const FUNNEL_TREE: FunnelNode[] = [
             kpi: "traffic",
             category: "발급 프로세스",
             categoryIcon: "📋",
-            rationale: "경쟁 약한 핵심 SEO 주제. 플라트 서비스와 직결.",
+            rationale: "경쟁 약한 핵심 SEO 주제. 플라트 라이프 서비스와 직결.",
             signal: { kind: "seo-gap", detail: "ARC TOP 10 중 서비스 연결 0" },
             difficulty: "low",
             impact: "high",

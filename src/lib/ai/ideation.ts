@@ -161,8 +161,8 @@ function buildCompassBlock(input: CompassInput & { searchQuery?: string; searchM
   const pains = pickDefs(PAIN_TAGS, input.painTags)
   if (pains.length > 0) {
     parts.push(
-      `## Pain Point / 플라트 서비스 레버 (자연스럽게 연결)\n` +
-        pains.map((p) => `- ${p.ko}${p.isServiceLever ? " (🎯 플라트 차별점)" : ""}`).join("\n")
+      `## Pain Point / 플라트 라이프 서비스 레버 (자연스럽게 연결)\n` +
+        pains.map((p) => `- ${p.ko}${p.isServiceLever ? " (🎯 플라트 라이프 차별점)" : ""}`).join("\n")
     )
   }
 
@@ -311,7 +311,7 @@ ${signalContext}
     ? `\n\n## 🔥 Google Search 로 수집한 최신 시장 신호 (반드시 반영)\n${signalText}\n\n[참고 매체] ${signalPublishers.join(" · ")}\n\n위 신호들을 ideas.signal_kind/signal_detail/related_keywords 에 자연스럽게 녹여라.`
     : ""
 
-  const prompt = `플라트라이프(한국 단기임대 플랫폼) 블로그용 주제 **정확히 ${count}개** 를 생성해줘.
+  const prompt = `**플라트 라이프** (한국 단기임대 플랫폼, 공식 표기는 공백 포함 "플라트 라이프") 블로그용 주제 **정확히 ${count}개** 를 생성해줘.
 ⚠️ 응답의 \`ideas\` 배열은 **반드시 길이 ${count}** — 더 적거나 더 많이 만들면 안 됨.
 
 ${segmentBlock}
@@ -320,10 +320,10 @@ ${compassBlock}${contextBlock}${signalBlock}
 
 ## 🎯 필수 원칙 (모든 주제 공통 — 위반하면 그 주제는 폐기)
 
-1. **플라트 전환 깔때기 정렬**
+1. **플라트 라이프 전환 깔때기 정렬**
    모든 주제는 검색→탐색→활동→유입→전환 깔때기에서 한 단계.
-   주제 자체에서 "플라트라이프" 라는 단어는 박지 말되, 답이 향하는 사람은
-   결국 플라트 단기임대 후보 고객이어야 함.
+   주제 자체에서 "플라트 라이프" 라는 브랜드명은 박지 말되, 답이 향하는 사람은
+   결국 플라트 라이프 단기임대 후보 고객이어야 함.
 
 2. **타사명·타사 사례 직접 언급 절대 금지**
    - ❌ "야놀자 vs 에어비앤비 비교" / "켄싱턴호텔 후기"

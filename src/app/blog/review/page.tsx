@@ -78,7 +78,7 @@ const CAT_META: Record<
 > = {
   SEO: { emoji: "🔎", desc: "검색·구조·메타", color: "#3B82F6" },
   "팩트·출처": { emoji: "📚", desc: "출처·수치·허위정보 검증", color: "#EA580C" },
-  "톤 & 브랜드": { emoji: "🗣", desc: "플라트 보이스·난이도", color: "#7C3AED" },
+  "톤 & 브랜드": { emoji: "🗣", desc: "플라트 라이프 보이스·난이도", color: "#7C3AED" },
 }
 
 export default function ReviewPage() {
