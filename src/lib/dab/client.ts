@@ -2,14 +2,18 @@
  * DAB Admin API 클라이언트 — 콘텐츠 자동 등록.
  *
  * 동작 모드:
- *  1) MOCK (디폴트, 인증 추적 전)
- *     - 환경변수 DAB_API_URL 미설정 또는 DAB_USE_MOCK=true 일 때
+ *  1) MOCK (디폴트)
+ *     - 환경변수 DAB_API_URL / CLIENT_ID / CLIENT_SECRET 미설정 또는
+ *       DAB_USE_MOCK=true 일 때
  *     - 실제 API 호출 X, 가짜 dab_blog_id 발급해서 흐름만 검증
- *  2) REAL (인증 추적 후)
- *     - DAB_API_URL + DAB_API_TOKEN 설정 시
- *     - POST /v1/blog 실제 호출 (Authorization: Bearer <token>)
+ *  2) REAL
+ *     - 환경변수 3종 모두 설정 시:
+ *       · DAB_API_URL (예: https://dev.life.plott.co.kr/api)
+ *       · DAB_CLIENT_ID (예: marketing-agent)
+ *       · DAB_CLIENT_SECRET (벤틀리 발급)
+ *     - POST /v1/blog 호출 (Authorization: Basic ${base64(id:secret)})
  *
- * 호출 측은 모드와 무관 — saveBlogToAdmin() 결과만 보고 metadata 업데이트.
+ * ⚠ 보안: secret 은 process.env 에서만 읽음. 응답·로그에 절대 노출 X.
  */
 
 import "server-only"
@@ -41,8 +45,24 @@ export interface SaveBlogInput {
 }
 
 const apiUrl = () => process.env.DAB_API_URL?.replace(/\/$/, "") ?? ""
-const apiToken = () => process.env.DAB_API_TOKEN ?? ""
-const isMockMode = () => !apiUrl() || process.env.DAB_USE_MOCK === "true"
+const clientId = () => process.env.DAB_CLIENT_ID ?? ""
+const clientSecret = () => process.env.DAB_CLIENT_SECRET ?? ""
+const isMockMode = () =>
+  process.env.DAB_USE_MOCK === "true" ||
+  !apiUrl() || !clientId() || !clientSecret()
+
+/** Basic Auth 헤더 생성 — Buffer.from base64 encode */
+function buildBasicAuth(): string {
+  const id = clientId()
+  const secret = clientSecret()
+  /* Node.js / Edge 양쪽 호환 */
+  const raw = `${id}:${secret}`
+  const encoded =
+    typeof Buffer !== "undefined"
+      ? Buffer.from(raw, "utf-8").toString("base64")
+      : btoa(unescape(encodeURIComponent(raw)))
+  return `Basic ${encoded}`
+}
 
 export async function saveBlogToAdmin(input: SaveBlogInput): Promise<DabSaveResult> {
   const dabInput = mapDraftToDabInput(input.draft, input.topic ?? null, {
@@ -86,13 +106,19 @@ function generateMockId(): number {
   return Math.floor(Date.now() / 1000) % 1_000_000
 }
 
-/* ─── REAL (인증 추적 후 활성화) ───────────────────────── */
+/* ─── REAL (Basic Auth) ──────────────────────────────────
+   POST {DAB_API_URL}/v1/blog
+   Authorization: Basic ${base64(clientId:clientSecret)}
 
+   ⚠ 보안:
+   - secret 은 process.env 에서만 읽음
+   - 에러 메시지에 헤더·secret 절대 포함 X
+   - 로그에 secret 출력 금지 */
 async function realSave(input: DabSaveBlogInput): Promise<DabSaveResult> {
   const url = `${apiUrl()}/v1/blog`
-  const token = apiToken()
-  if (!token) {
-    return { ok: false, error: "DAB_API_TOKEN 미설정 — 인증 토큰 필요" }
+
+  if (!clientId() || !clientSecret()) {
+    return { ok: false, error: "DAB_CLIENT_ID / DAB_CLIENT_SECRET 미설정" }
   }
 
   try {
@@ -100,14 +126,18 @@ async function realSave(input: DabSaveBlogInput): Promise<DabSaveResult> {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
+        Authorization: buildBasicAuth(),
       },
       body: JSON.stringify(input),
     })
 
     if (!res.ok) {
+      /* 응답 텍스트만 — 우리 헤더(Authorization 포함) 는 절대 외부로 안 나감 */
       const text = await res.text().catch(() => "")
-      return { ok: false, error: `${res.status} ${res.statusText}${text ? ` — ${text.slice(0, 200)}` : ""}` }
+      return {
+        ok: false,
+        error: `${res.status} ${res.statusText}${text ? ` — ${text.slice(0, 200)}` : ""}`,
+      }
     }
 
     /* 대브 schema 의 BlogItemResponse 형태 가정 */
@@ -125,6 +155,7 @@ async function realSave(input: DabSaveBlogInput): Promise<DabSaveResult> {
       registeredAt: new Date().toISOString(),
     }
   } catch (err) {
+    /* 네트워크 등 에러 메시지 — secret 미포함 */
     return { ok: false, error: err instanceof Error ? err.message : String(err) }
   }
 }
