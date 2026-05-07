@@ -10,6 +10,7 @@
 
 import "server-only"
 import type { GroundingSource } from "./provider"
+import { isBannedCompetitorDomain } from "../blog/banned-brands"
 
 /* ─── 화이트리스트 (writer · reviewer 공용) ─────────────────── */
 
@@ -65,6 +66,8 @@ export function isAllowedSource(s: { uri?: string; domain?: string; title?: stri
   const url = (s.uri ?? "").toLowerCase()
   const domain = (s.domain ?? "").toLowerCase()
   const title = (s.title ?? "").toLowerCase()
+  /* 경쟁사·OTA 도메인 즉시 hard block (화이트리스트 매칭 전) */
+  if (isBannedCompetitorDomain(domain)) return false
   /* 약관·이용약관 URL 즉시 거부 (화이트리스트 도메인이어도) */
   if (HARD_BLOCK_URL_PATTERNS.some((re) => re.test(url) || re.test(title))) return false
   /* 화이트리스트 매칭 — uri/domain/title 셋 중 하나라도 통과 */
