@@ -3,6 +3,10 @@
     {
       "path": "/api/dab/cron-send",
       "schedule": "0 15 * * *"
+    },
+    {
+      "path": "/api/automation/cron-tick",
+      "schedule": "0 * * * *"
     }
   ]
 }

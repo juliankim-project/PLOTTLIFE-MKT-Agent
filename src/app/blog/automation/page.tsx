@@ -699,56 +699,124 @@ function StageNavigator({
   )
 }
 
-/* ─── 스케줄 명령 생성기 ───────────────────────────────────────
-   사용자가 라디오 + 시간 선택 → cron expression + Claude /schedule
-   명령어 자동 생성. 클립보드 복사 버튼 포함.
-   PC 꺼져 있어도 Anthropic 클라우드에서 실행. */
+/* ─── 스케줄 등록 + 목록 — 자체 cron 시스템 ────────────────────
+   화면에서 등록·편집·삭제 → 우리 DB(automation_schedules) → Vercel Cron
+   매시간 호출 → due 항목 자동 실행. PC 꺼져 있어도 동작. */
+
+interface ScheduleRow {
+  id: string
+  name: string
+  cron_expression: string
+  enabled: boolean
+  forced_template: "steps" | "compare" | "story" | null
+  quality: "flash" | "pro"
+  next_run_at: string | null
+  last_run_at: string | null
+  last_run_status: "succeeded" | "failed" | null
+  last_draft_id: string | null
+  last_error: string | null
+  run_count: number
+}
+
 function ScheduleCard() {
   type Mode = "daily" | "weekly" | "hourly" | "custom"
   const [mode, setMode] = useState<Mode>("daily")
-  const [hour, setHour] = useState(9)
+  const [name, setName] = useState("매일 자동 콘텐츠")
+  const [hourKst, setHourKst] = useState(9)
   const [minute, setMinute] = useState(0)
-  const [weekday, setWeekday] = useState(1) // 1 = Mon
-  const [customCron, setCustomCron] = useState("0 9 * * *")
-  const [copied, setCopied] = useState(false)
+  const [weekday, setWeekday] = useState(1)
+  const [customCron, setCustomCron] = useState("0 0 * * *")
+  const [forcedTemplate, setForcedTemplate] = useState<"auto" | "steps" | "compare" | "story">("auto")
+  const [quality, setQuality] = useState<"flash" | "pro">("flash")
+
+  const [schedules, setSchedules] = useState<ScheduleRow[]>([])
+  const [loading, setLoading] = useState(true)
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [okMsg, setOkMsg] = useState<string | null>(null)
+
+  /* KST hour → UTC hour 변환 (cron 은 UTC 기준) */
+  const utcHour = ((hourKst - 9 + 24) % 24)
 
   const cron = (() => {
-    const hh = String(hour).padStart(2, "0")
-    const mm = String(minute).padStart(2, "0")
-    void hh; void mm
-    if (mode === "daily") return `${minute} ${hour} * * *`
-    if (mode === "weekly") return `${minute} ${hour} * * ${weekday}`
+    if (mode === "daily") return `${minute} ${utcHour} * * *`
+    if (mode === "weekly") return `${minute} ${utcHour} * * ${weekday}`
     if (mode === "hourly") return `${minute} * * * *`
     return customCron
   })()
 
   const description = (() => {
-    const hh = String(hour).padStart(2, "0")
+    const hh = String(hourKst).padStart(2, "0")
     const mm = String(minute).padStart(2, "0")
     const wdNames = ["일요일", "월요일", "화요일", "수요일", "목요일", "금요일", "토요일"]
-    if (mode === "daily") return `매일 ${hh}:${mm}`
-    if (mode === "weekly") return `매주 ${wdNames[weekday]} ${hh}:${mm}`
+    if (mode === "daily") return `매일 ${hh}:${mm} (KST)`
+    if (mode === "weekly") return `매주 ${wdNames[weekday]} ${hh}:${mm} (KST)`
     if (mode === "hourly") return `매시 ${mm}분`
-    return "커스텀 cron"
+    return "커스텀 cron (UTC)"
   })()
 
-  const command = `/schedule "${cron}" "자동화 페이지의 '자동 실행' 버튼 눌러서 콘텐츠 1편을 만들어줘"`
-
-  const copy = async () => {
+  const loadSchedules = useCallback(async () => {
+    setLoading(true)
     try {
-      await navigator.clipboard.writeText(command)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2500)
-    } catch {
-      /* clipboard 실패 시 selection */
+      const r = await fetch("/api/automation/schedules", { cache: "no-store" })
+      const j = await r.json()
+      if (j.ok) setSchedules(j.schedules ?? [])
+    } catch (e) {
+      console.warn("schedules load failed:", e)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    loadSchedules()
+  }, [loadSchedules])
+
+  const submit = async () => {
+    setSubmitting(true)
+    setError(null)
+    setOkMsg(null)
+    try {
+      const r = await fetch("/api/automation/schedules", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          name,
+          cronExpression: cron,
+          enabled: true,
+          forcedTemplate: forcedTemplate === "auto" ? null : forcedTemplate,
+          quality,
+        }),
+      })
+      const j = await r.json()
+      if (!j.ok) throw new Error(j.error ?? "등록 실패")
+      setOkMsg(`✅ 등록됨 — ${description}`)
+      setTimeout(() => setOkMsg(null), 3000)
+      await loadSchedules()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "등록 실패")
+    } finally {
+      setSubmitting(false)
     }
   }
 
+  const toggleEnabled = async (id: string, next: boolean) => {
+    await fetch(`/api/automation/schedules/${id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ enabled: next }),
+    })
+    await loadSchedules()
+  }
+
+  const remove = async (id: string, schedName: string) => {
+    if (!confirm(`스케줄 "${schedName}" 을 삭제할까요?`)) return
+    await fetch(`/api/automation/schedules/${id}`, { method: "DELETE" })
+    await loadSchedules()
+  }
+
   const radio = (m: Mode, label: string) => (
-    <button
-      key={m}
-      type="button"
-      onClick={() => setMode(m)}
+    <button key={m} type="button" onClick={() => setMode(m)}
       style={{
         padding: "6px 12px",
         fontSize: 11.5,
@@ -758,10 +826,7 @@ function ScheduleCard() {
         color: mode === m ? "var(--brand-800, #3730a3)" : "var(--text-secondary)",
         borderRadius: 6,
         cursor: "pointer",
-      }}
-    >
-      {label}
-    </button>
+      }}>{label}</button>
   )
 
   return (
@@ -769,11 +834,20 @@ function ScheduleCard() {
       <div className="bcard__header">
         <div>
           <div className="bcard__title">📅 스케줄 등록</div>
-          <div className="bcard__sub">Claude /schedule 명령 자동 생성 — Anthropic 클라우드, PC 꺼져 있어도 동작</div>
+          <div className="bcard__sub">시간 등록 → Vercel Cron 매시간 검사 → 자동 실행 (PC 무관)</div>
         </div>
       </div>
       <div style={{ padding: "14px 18px", display: "flex", flexDirection: "column", gap: 12 }}>
-        {/* 주기 선택 */}
+        {/* 이름 */}
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 6 }}>
+            이름
+          </div>
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="매일 자동 콘텐츠"
+            style={{ width: "100%", padding: "6px 10px", fontSize: 12.5, border: "1px solid var(--border-default)", borderRadius: 6 }} />
+        </div>
+
+        {/* 주기 */}
         <div>
           <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 6 }}>
             주기
@@ -782,44 +856,35 @@ function ScheduleCard() {
             {radio("daily", "매일")}
             {radio("weekly", "매주")}
             {radio("hourly", "매시간")}
-            {radio("custom", "커스텀")}
+            {radio("custom", "커스텀 cron")}
           </div>
         </div>
 
         {/* 요일 (weekly) */}
         {mode === "weekly" && (
           <div>
-            <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 6 }}>
-              요일
-            </div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 6 }}>요일</div>
             <div style={{ display: "flex", gap: 4 }}>
               {["일", "월", "화", "수", "목", "금", "토"].map((d, i) => (
-                <button
-                  key={i}
-                  type="button"
-                  onClick={() => setWeekday(i)}
+                <button key={i} type="button" onClick={() => setWeekday(i)}
                   style={{
-                    width: 32, height: 32,
-                    fontSize: 12, fontWeight: 700,
+                    width: 32, height: 32, fontSize: 12, fontWeight: 700,
                     border: `1.5px solid ${weekday === i ? "var(--brand-500)" : "var(--border-default)"}`,
                     background: weekday === i ? "var(--brand-500)" : "white",
                     color: weekday === i ? "white" : "var(--text-secondary)",
                     borderRadius: 6, cursor: "pointer",
-                  }}
-                >
-                  {d}
-                </button>
+                  }}>{d}</button>
               ))}
             </div>
           </div>
         )}
 
-        {/* 시간 (daily / weekly) */}
+        {/* 시간 (daily / weekly) — KST 기준 */}
         {(mode === "daily" || mode === "weekly") && (
           <div style={{ display: "flex", gap: 12 }}>
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 6 }}>시</div>
-              <select value={hour} onChange={(e) => setHour(parseInt(e.target.value))}
+              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 6 }}>시 (KST)</div>
+              <select value={hourKst} onChange={(e) => setHourKst(parseInt(e.target.value))}
                 style={{ width: "100%", padding: "6px 8px", fontSize: 12, border: "1px solid var(--border-default)", borderRadius: 6 }}>
                 {Array.from({ length: 24 }, (_, i) => (
                   <option key={i} value={i}>{String(i).padStart(2, "0")}</option>
@@ -838,7 +903,6 @@ function ScheduleCard() {
           </div>
         )}
 
-        {/* 분 (hourly) */}
         {mode === "hourly" && (
           <div>
             <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 6 }}>매시 ?분</div>
@@ -851,56 +915,138 @@ function ScheduleCard() {
           </div>
         )}
 
-        {/* 커스텀 cron */}
         {mode === "custom" && (
           <div>
-            <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 6 }}>cron expression</div>
-            <input value={customCron} onChange={(e) => setCustomCron(e.target.value)}
-              placeholder="0 9 * * *"
-              style={{ width: "100%", padding: "6px 8px", fontSize: 12, fontFamily: "ui-monospace, monospace", border: "1px solid var(--border-default)", borderRadius: 6 }} />
+            <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 6 }}>cron expression (UTC)</div>
+            <input value={customCron} onChange={(e) => setCustomCron(e.target.value)} placeholder="0 0 * * *"
+              style={{ width: "100%", padding: "6px 10px", fontSize: 12, fontFamily: "ui-monospace, monospace", border: "1px solid var(--border-default)", borderRadius: 6 }} />
           </div>
         )}
 
-        {/* 결과 미리보기 */}
+        {/* 옵션 */}
+        <div style={{ display: "flex", gap: 12 }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 6 }}>본문 형태</div>
+            <select value={forcedTemplate} onChange={(e) => setForcedTemplate(e.target.value as "auto" | "steps" | "compare" | "story")}
+              style={{ width: "100%", padding: "6px 8px", fontSize: 12, border: "1px solid var(--border-default)", borderRadius: 6 }}>
+              <option value="auto">🤖 자동 (다양성)</option>
+              <option value="steps">📖 가이드형</option>
+              <option value="compare">⚖️ 비교/추천</option>
+              <option value="story">💬 스토리/Q&A</option>
+            </select>
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 6 }}>품질</div>
+            <select value={quality} onChange={(e) => setQuality(e.target.value as "flash" | "pro")}
+              style={{ width: "100%", padding: "6px 8px", fontSize: 12, border: "1px solid var(--border-default)", borderRadius: 6 }}>
+              <option value="flash">💨 Flash</option>
+              <option value="pro">🧠 Pro</option>
+            </select>
+          </div>
+        </div>
+
+        {/* 결과 미리보기 + 등록 */}
         <div style={{ marginTop: 4 }}>
           <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 6 }}>
-            🤖 생성된 Claude 명령어 ({description})
+            요약
           </div>
-          <div
-            style={{
-              padding: "10px 12px",
-              background: "var(--bg-subtle)",
-              border: "1px solid var(--border-default)",
-              borderRadius: 6,
-              fontFamily: "ui-monospace, monospace",
-              fontSize: 11,
-              wordBreak: "break-all",
-              lineHeight: 1.5,
-            }}
-          >
-            {command}
+          <div style={{ padding: "8px 12px", background: "var(--bg-subtle)", border: "1px solid var(--border-default)", borderRadius: 6, fontSize: 11.5, lineHeight: 1.6 }}>
+            <b style={{ color: "var(--brand-700)" }}>{description}</b>
+            <span className="text-mono" style={{ marginLeft: 8, color: "var(--text-muted)", fontSize: 10.5 }}>cron: {cron}</span>
           </div>
-          <button
-            type="button"
-            onClick={copy}
+
+          {error && (
+            <div style={{ marginTop: 8, padding: "6px 10px", background: "#fef2f2", border: "1px solid #fecaca", color: "#b91c1c", borderRadius: 6, fontSize: 11.5 }}>⚠️ {error}</div>
+          )}
+          {okMsg && (
+            <div style={{ marginTop: 8, padding: "6px 10px", background: "#ecfdf5", border: "1px solid #a7f3d0", color: "#047857", borderRadius: 6, fontSize: 11.5 }}>{okMsg}</div>
+          )}
+
+          <button type="button" onClick={submit} disabled={submitting || !name.trim()}
             style={{
               marginTop: 8,
               width: "100%",
               padding: "10px 14px",
-              background: copied ? "#10b981" : "var(--brand-600)",
+              background: submitting || !name.trim() ? "#cbd5e1" : "var(--brand-600)",
               color: "white",
               border: 0,
               borderRadius: 8,
               fontSize: 12.5,
               fontWeight: 700,
-              cursor: "pointer",
-            }}
-          >
-            {copied ? "✅ 복사됨 — Claude 에 붙여넣기" : "📋 명령어 복사"}
+              cursor: submitting || !name.trim() ? "not-allowed" : "pointer",
+            }}>
+            {submitting ? "등록 중…" : "📥 화면에 등록"}
           </button>
-          <div style={{ marginTop: 8, fontSize: 11, color: "var(--text-muted)", lineHeight: 1.5 }}>
-            복사 후 Claude Code 에서 <code>Ctrl+V</code> 로 붙여넣기 → 엔터. 등록 후 Anthropic 클라우드에서 실행됩니다.
+        </div>
+
+        {/* 등록된 스케줄 목록 */}
+        <div style={{ marginTop: 8, paddingTop: 12, borderTop: "1px dashed var(--border-default)" }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 8 }}>
+            등록된 스케줄 {loading ? "…" : `(${schedules.length})`}
           </div>
+          {schedules.length === 0 && !loading && (
+            <div style={{ padding: "12px 0", fontSize: 11.5, color: "var(--text-muted)", textAlign: "center" }}>
+              등록된 스케줄이 없어요.
+            </div>
+          )}
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {schedules.map((s) => (
+              <div key={s.id}
+                style={{
+                  padding: "10px 12px",
+                  background: s.enabled ? "white" : "var(--bg-subtle)",
+                  border: "1px solid var(--border-default)",
+                  borderRadius: 6,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                  opacity: s.enabled ? 1 : 0.6,
+                }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 2 }}>{s.name}</div>
+                  <div className="text-mono" style={{ fontSize: 10.5, color: "var(--text-muted)" }}>
+                    {s.cron_expression} · {s.quality === "pro" ? "🧠 Pro" : "💨 Flash"} · {s.forced_template ?? "auto"}
+                  </div>
+                  {s.next_run_at && s.enabled && (
+                    <div style={{ fontSize: 10.5, color: "var(--text-secondary)", marginTop: 2 }}>
+                      다음: {new Date(s.next_run_at).toLocaleString("ko-KR", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                    </div>
+                  )}
+                  {s.last_run_at && (
+                    <div style={{ fontSize: 10.5, color: s.last_run_status === "succeeded" ? "#047857" : "#b91c1c", marginTop: 2 }}>
+                      마지막: {s.last_run_status === "succeeded" ? "✅" : "❌"} {new Date(s.last_run_at).toLocaleString("ko-KR", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                      {s.last_draft_id && s.last_run_status === "succeeded" && (
+                        <Link href={`/blog/contents/${s.last_draft_id}`} style={{ color: "var(--brand-600)", marginLeft: 6 }}>→ 보기</Link>
+                      )}
+                    </div>
+                  )}
+                  <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 2 }}>
+                    실행 {s.run_count}회
+                  </div>
+                </div>
+                <button type="button" onClick={() => toggleEnabled(s.id, !s.enabled)}
+                  style={{
+                    padding: "4px 10px",
+                    fontSize: 10.5,
+                    fontWeight: 700,
+                    border: 0,
+                    background: s.enabled ? "#10b981" : "#cbd5e1",
+                    color: "white",
+                    borderRadius: 999,
+                    cursor: "pointer",
+                  }}>
+                  {s.enabled ? "ON" : "OFF"}
+                </button>
+                <button type="button" onClick={() => remove(s.id, s.name)}
+                  style={{ background: "transparent", border: 0, color: "var(--danger-fg, #b91c1c)", fontSize: 14, cursor: "pointer", padding: 4 }}
+                  aria-label="삭제">🗑</button>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ fontSize: 10.5, color: "var(--text-muted)", lineHeight: 1.5, paddingTop: 4 }}>
+          ⓘ Vercel Cron 이 매시간 정각에 due 항목 검사. 정확도 ±1시간 안쪽 (대개 1분 내).
         </div>
       </div>
     </div>
