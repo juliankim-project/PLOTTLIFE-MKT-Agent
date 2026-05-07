@@ -283,7 +283,7 @@ function SpecialistDetail({ specialist: s }: { specialist: SkillSpecialist }) {
               className="text-[10px] font-bold uppercase tracking-wider mb-1"
               style={{ color: s.color }}
             >
-              플라트라이프 적합도
+              플라트 라이프 적합도
             </p>
             <p className="text-gray-700">{s.plottFit}</p>
           </div>

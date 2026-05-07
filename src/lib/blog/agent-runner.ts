@@ -136,7 +136,7 @@ export function runCopywriting(content: BlogContent): CopyVariants {
       `외국인도 쉽게 — ${k} 체크리스트`,
       `${k} — 유학생·노마드가 뽑은 추천`,
     ],
-    leadParagraph: `한국에서 ${content.target_audience}으(로) ${k}을(를) 찾고 계신가요? 플라트라이프가 직접 검증한 매물 중에서 이번 주 예약 가능한 곳만 골라서 정리했습니다. 사진·가격·호스트 응답 속도까지 한눈에 확인하세요.`,
+    leadParagraph: `한국에서 ${content.target_audience}으(로) ${k}을(를) 찾고 계신가요? 플라트 라이프가 직접 검증한 매물 중에서 이번 주 예약 가능한 곳만 골라서 정리했습니다. 사진·가격·호스트 응답 속도까지 한눈에 확인하세요.`,
     sectionHooks: [
       "먼저 알아두면 좋은 것",
       "실제 매물은 어떤가요?",

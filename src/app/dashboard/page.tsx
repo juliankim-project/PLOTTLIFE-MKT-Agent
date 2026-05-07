@@ -16,7 +16,7 @@ const kpiData = [
 ];
 
 const weeklyHighlights = [
-  { agent: "content-marketer", text: "플라트라이프 봄 시즌 블로그 시리즈 3편 발행 완료" },
+  { agent: "content-marketer", text: "플라트 라이프 봄 시즌 블로그 시리즈 3편 발행 완료" },
   { agent: "seo-expert", text: "'단기임대' 키워드 검색 순위 3위 → 1위 달성" },
   { agent: "performance-marketer", text: "Meta 리타겟팅 캠페인 ROAS 320% 달성" },
   { agent: "crm-retention", text: "이탈 고객 윈백 이메일 시퀀스 완성, 오픈율 28%" },

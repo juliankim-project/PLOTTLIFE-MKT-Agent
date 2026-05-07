@@ -502,7 +502,7 @@ function IdeationPage() {
                   <span
                     key={p.id}
                     className={`tag${on ? " tag--on" : ""}`}
-                    title={p.isServiceLever ? "플라트 차별점과 연결 가능" : undefined}
+                    title={p.isServiceLever ? "플라트 라이프 차별점과 연결 가능" : undefined}
                     onClick={() => toggleSet(selectedPains, p.id, setSelectedPains)}
                   >
                     {p.ko}

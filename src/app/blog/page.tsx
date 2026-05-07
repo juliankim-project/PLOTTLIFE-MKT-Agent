@@ -16,7 +16,7 @@ export default function JourneyMapPage() {
         </span>
         <h1 className="page-header__title">단기임대 블로그 자동화 · 유저 여정 한판</h1>
         <p className="page-header__sub">
-          플라트라이프 블로그 파이프라인 7단계를 한 화면에. 리서치부터 성과분석까지 각 단계의 인풋·출력물·담당 에이전트가
+          플라트 라이프 블로그 파이프라인 7단계를 한 화면에. 리서치부터 성과분석까지 각 단계의 인풋·출력물·담당 에이전트가
           구조화되어 있고, 카드를 클릭하면 해당 단계로 이동합니다.
         </p>
       </div>
@@ -172,7 +172,7 @@ export default function JourneyMapPage() {
             "평균 체류시간 · 스크롤 깊이",
             "SERP 랭킹 (타겟 키워드)",
             "예약 전환율 (매물 CTA 클릭 → 예약)",
-            '브랜드 검색량 ("플라트라이프")',
+            '브랜드 검색량 ("플라트 라이프")',
           ]}
         />
       </div>

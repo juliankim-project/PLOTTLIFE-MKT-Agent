@@ -152,7 +152,7 @@ export const LIFE_TRIGGERS: LifeTriggerTag[] = [
 export interface PainTag {
   id: string
   ko: string
-  /** 플라트라이프 서비스 차별점으로 연결 가능한지 */
+  /** 플라트 라이프 서비스 차별점으로 연결 가능한지 */
   isServiceLever?: boolean
 }
 
