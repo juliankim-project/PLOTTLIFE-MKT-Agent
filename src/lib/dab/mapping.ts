@@ -6,7 +6,7 @@
  */
 
 import { pickDabCategory, type DabCategory } from "./category"
-import { markdownToHtml, extractSummary } from "./markdown-to-html"
+import { markdownToHtml, extractSummary, stripIntroBeforeFirstH2 } from "./markdown-to-html"
 
 /* 대브 SaveBlogInput 과 1:1 미러링한 타입 */
 export interface DabSaveBlogInput {
@@ -49,7 +49,7 @@ export interface TopicLike {
 export interface MapDraftOptions {
   /** 기존 대브 blog id (수정 시) — drafts.metadata.dab_blog_id 에서 읽어 전달 */
   existingDabId?: number | null
-  /** 작성자명. 환경변수 DAB_AUTHOR_NAME 또는 "플라트라이프 에디터" */
+  /** 작성자명. 환경변수 DAB_AUTHOR_NAME 또는 "Life Editor" */
   authorName?: string
   /** 발행 토글 — 디폴트 DRAFT (게시 OFF) */
   status?: "DRAFT" | "PUBLISHED"
@@ -85,8 +85,12 @@ export function mapDraftToDabInput(
       journeyStage: topic?.journey_stage,
     })
 
-  const html = markdownToHtml(draft.body_markdown ?? "")
-  const summary = draft.meta_description?.trim() || extractSummary(draft.body_markdown ?? "")
+  /* summary 는 도입부에서 추출 (또는 meta_description) — 도입부는 본문에서 제거해
+     어드민 화면에서 같은 내용이 summary + 본문 상단으로 중복 노출되지 않게 함 */
+  const rawMarkdown = draft.body_markdown ?? ""
+  const summary = draft.meta_description?.trim() || extractSummary(rawMarkdown)
+  const bodyMarkdown = stripIntroBeforeFirstH2(rawMarkdown)
+  const html = markdownToHtml(bodyMarkdown)
   const thumbnail = options.forcedThumbnail ?? draft.cover_url ?? null
 
   return {
@@ -96,7 +100,7 @@ export function mapDraftToDabInput(
     thumbnail,
     summary: summary || null,
     content: html || null,
-    authorName: options.authorName ?? "플라트라이프 에디터",
+    authorName: options.authorName ?? process.env.DAB_AUTHOR_NAME ?? "Life Editor",
     isLifeEditor: true,
     status: options.status ?? "DRAFT",
     layoutType: "A",

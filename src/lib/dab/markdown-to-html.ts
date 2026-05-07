@@ -32,6 +32,23 @@ export function markdownToHtml(markdown: string): string {
 }
 
 /**
+ * 첫 H2(##) 이전의 도입부(서론·H1 제목 등) 를 본문에서 제거.
+ *
+ * 대브 어드민은 summary 필드를 본문 위에 따로 노출하므로,
+ * 도입부가 본문에 그대로 남아있으면 같은 내용이 두 번 보임.
+ * 이 함수로 H2 이전 부분을 잘라내고 첫 H2 부터 본문으로 사용.
+ *
+ * - H2 가 하나도 없으면 markdown 그대로 반환 (안전).
+ */
+export function stripIntroBeforeFirstH2(markdown: string): string {
+  if (!markdown) return ""
+  const re = /^##\s+/m
+  const match = re.exec(markdown)
+  if (!match || match.index === undefined) return markdown
+  return markdown.slice(match.index).trim()
+}
+
+/**
  * 본문 첫 문단(서론)을 평문으로 추출 — 대브 schema 의 `summary` 필드용.
  * - 첫 H2 이전의 단락 텍스트
  * - 마크다운 기호 제거 (**, *, `, [text](url) → text)
