@@ -5,6 +5,14 @@ import { useParams, useRouter } from "next/navigation"
 import { Icon, PageHeader } from "../../_ui"
 import { MarkdownPreview } from "../../_ui/markdown-preview"
 
+interface ImageManifestEntry {
+  kind: "hero" | "inline"
+  index: number
+  url: string
+  alt: string
+  generatedAt?: string
+}
+
 interface Draft {
   id: string
   title: string
@@ -14,6 +22,116 @@ interface Draft {
   progress_pct: number | null
   primary_keyword: string | null
   updated_at: string
+  metadata?: { images?: ImageManifestEntry[] } | null
+}
+
+/** 이미지 카드 — 미리보기 + 재생성 버튼 */
+function ImageCard(props: {
+  label: string
+  url: string
+  alt: string
+  busy: boolean
+  onRegenerate: () => void
+}) {
+  return (
+    <div
+      style={{
+        border: "1px solid var(--border-default)",
+        borderRadius: "var(--r-md)",
+        background: "var(--bg-surface)",
+        overflow: "hidden",
+        display: "flex",
+        flexDirection: "column",
+      }}
+    >
+      <div
+        style={{
+          aspectRatio: "16/9",
+          background: "var(--bg-subtle)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          overflow: "hidden",
+          position: "relative",
+        }}
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={props.url}
+          alt={props.alt}
+          style={{ width: "100%", height: "100%", objectFit: "cover" }}
+        />
+        {props.busy && (
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              background: "rgba(15,23,42,0.55)",
+              color: "#fff",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: 12,
+              fontWeight: 600,
+            }}
+          >
+            🎨 재생성 중…
+          </div>
+        )}
+      </div>
+      <div style={{ padding: "8px 10px", display: "flex", alignItems: "center", gap: 8 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-default)" }}>{props.label}</div>
+          <div
+            style={{
+              fontSize: 10.5,
+              color: "var(--text-muted)",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+            title={props.alt}
+          >
+            {props.alt}
+          </div>
+        </div>
+        <button
+          onClick={props.onRegenerate}
+          disabled={props.busy}
+          style={{
+            fontSize: 11,
+            padding: "5px 10px",
+            border: "1px solid var(--border-default)",
+            borderRadius: 6,
+            background: props.busy ? "var(--bg-subtle)" : "var(--bg-surface)",
+            color: "var(--text-default)",
+            cursor: props.busy ? "default" : "pointer",
+            fontWeight: 600,
+            whiteSpace: "nowrap",
+          }}
+          title="이 이미지만 새로 생성"
+        >
+          🔄 재생성
+        </button>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * 본문에서 ![alt](url) 이미지를 찾아 list 화 — 매니페스트 fallback.
+ * 매니페스트가 없는 옛 draft 도 본문 기준으로 재생성 버튼 노출.
+ */
+function extractInlineImagesFromBody(body: string): Array<{ index: number; url: string; alt: string }> {
+  const re = /!\[([^\]]*)\]\(([^)\s]+)\)/g
+  const out: Array<{ index: number; url: string; alt: string }> = []
+  let m: RegExpExecArray | null
+  let i = 1
+  while ((m = re.exec(body)) !== null) {
+    out.push({ index: i, url: m[2], alt: m[1] })
+    i += 1
+  }
+  return out
 }
 
 async function safeFetchJson<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
@@ -40,6 +158,8 @@ export default function ContentsEditor() {
   const [error, setError] = useState<string | null>(null)
   const [copying, setCopying] = useState(false)
   const [copyMsg, setCopyMsg] = useState<string | null>(null)
+  /** 재생성 중인 이미지 식별자 ("hero" | "inline-3" 등) — 버튼 disabled / 스피너용 */
+  const [regenerating, setRegenerating] = useState<string | null>(null)
 
   /** 어드민 Tiptap 에 붙여넣을 HTML 클립보드 복사 */
   const handleCopyHtml = async () => {
@@ -103,6 +223,33 @@ export default function ContentsEditor() {
       setError(e instanceof Error ? e.message : "저장 실패")
     } finally {
       setSaving(false)
+    }
+  }
+
+  /** 단일 이미지 재생성 — hero 또는 본문 inline 1장 */
+  const regenerateImage = async (kind: "hero" | "inline", index: number) => {
+    if (!draftId) return
+    const key = `${kind}-${index}`
+    setRegenerating(key)
+    setError(null)
+    try {
+      const j = await safeFetchJson<{ ok: boolean; newUrl?: string; error?: string }>(
+        `/api/drafts/${draftId}/images/regenerate`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ kind, index }),
+        }
+      )
+      if (!j.ok) throw new Error(j.error ?? "재생성 실패")
+      /* 서버에서 body_markdown / hero_image_url / metadata 모두 갱신했으니 다시 로드 */
+      await load()
+      setCopyMsg(`✅ ${kind === "hero" ? "썸네일" : `본문 이미지 ${index}`} 재생성 완료`)
+      setTimeout(() => setCopyMsg(null), 4000)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "재생성 실패")
+    } finally {
+      setRegenerating(null)
     }
   }
 
@@ -278,6 +425,64 @@ export default function ContentsEditor() {
           />
         </div>
       </div>
+
+      {/* 이미지 관리 — hero + 본문 inline 이미지 각각 재생성 가능 */}
+      {(() => {
+        const manifest = draft?.metadata?.images ?? []
+        /* hero 우선: 매니페스트 hero → fallback hero_image_url */
+        const heroFromManifest = manifest.find((m) => m.kind === "hero")
+        const heroUrl = heroFromManifest?.url ?? draft.hero_image_url ?? null
+        const heroAlt = heroFromManifest?.alt ?? "썸네일"
+        /* inline: 매니페스트 우선, 없으면 본문에서 추출 */
+        const manifestInline = manifest.filter((m) => m.kind === "inline")
+        const inlineList =
+          manifestInline.length > 0
+            ? manifestInline.map((m) => ({ index: m.index, url: m.url, alt: m.alt }))
+            : extractInlineImagesFromBody(body)
+
+        if (!heroUrl && inlineList.length === 0) return null
+
+        return (
+          <div className="bcard" style={{ marginBottom: 14 }}>
+            <div className="bcard__header">
+              <div>
+                <div className="bcard__title">이미지 관리</div>
+                <div className="bcard__sub">
+                  썸네일·본문 이미지 각각 재생성 가능 — 한글 깨짐·간판 텍스트 어긋날 때 사용
+                </div>
+              </div>
+            </div>
+            <div
+              style={{
+                padding: 16,
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))",
+                gap: 12,
+              }}
+            >
+              {heroUrl && (
+                <ImageCard
+                  label="썸네일 (Hero)"
+                  url={heroUrl}
+                  alt={heroAlt}
+                  busy={regenerating === "hero-0"}
+                  onRegenerate={() => regenerateImage("hero", 0)}
+                />
+              )}
+              {inlineList.map((img) => (
+                <ImageCard
+                  key={`inline-${img.index}-${img.url}`}
+                  label={`본문 이미지 ${img.index}`}
+                  url={img.url}
+                  alt={img.alt}
+                  busy={regenerating === `inline-${img.index}`}
+                  onRegenerate={() => regenerateImage("inline", img.index)}
+                />
+              ))}
+            </div>
+          </div>
+        )
+      })()}
 
       {/* 에디터 / 미리보기 */}
       <div className="bcard">
