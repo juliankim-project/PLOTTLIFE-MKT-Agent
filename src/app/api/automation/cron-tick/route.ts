@@ -15,6 +15,26 @@ import { runFullPipelineFromIdea } from "@/lib/ai/automation"
 import { nextRunFromCron } from "@/lib/automation/schedule"
 import type { AutomationSchedule } from "@/lib/automation/schedule"
 
+/**
+ * Vercel Hobby 의 cron 갯수 한도 때문에 dab cron-send 도 여기서 함께 트리거.
+ * 자정 부근 (UTC 15:00 = KST 00:00) 에만 호출.
+ */
+async function maybeTriggerDabCronSend(req: Request): Promise<void> {
+  const utcHour = new Date().getUTCHours()
+  if (utcHour !== 15) return
+  try {
+    const proto = req.headers.get("x-forwarded-proto") ?? "https"
+    const host = req.headers.get("host")
+    if (!host) return
+    const url = `${proto}://${host}/api/dab/cron-send`
+    const auth: Record<string, string> = {}
+    if (process.env.CRON_SECRET) auth["authorization"] = `Bearer ${process.env.CRON_SECRET}`
+    await fetch(url, { method: "POST", headers: auth })
+  } catch (err) {
+    console.warn("[cron-tick] dab cron-send trigger failed:", err instanceof Error ? err.message : err)
+  }
+}
+
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 export const maxDuration = 300
@@ -33,6 +53,9 @@ async function handle(req: Request) {
       return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 })
     }
   }
+
+  /* 자정 부근이면 dab cron-send 도 같이 트리거 (cron 갯수 통합) */
+  await maybeTriggerDabCronSend(req)
 
   const db = supabaseAdmin()
   const now = new Date().toISOString()
